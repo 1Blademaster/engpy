@@ -1,12 +1,9 @@
-# Simple mathamatical operations (+, -, *, /) are implemented
-# Scope for paranthesised operations is implemented, although not finished
-# Storing variables is implemented as numbers or the result of an expression
-# Illegal character checking is implemented
+# Negative numbers have been implemented
+# Using parenthesises have been implemented
+# Floating point numbers have been implemented
 
 # Using variables in expressions is not yet implemented
 # Error handling is not yet implemented, e.g. 0 / 0 will not work
-# Negative numbers are not yet implemented
-# Floats are not yet implemented
 # An exit keyword is not yet implemented
 
 
@@ -14,26 +11,29 @@
 from sly import Lexer, Parser
 
 class BasicLexer(Lexer):
-    tokens = { NAME, NUMBER, PLUS, TIMES, MINUS, DIVIDE, ASSIGN, LPAREN, RPAREN }
+    tokens = { NAME, NUMBER, PLUS, MULTIPLIED, MINUS, DIVIDED, ASSIGN, LPAREN, RPAREN, UMINUS }
     ignore = ' \t'
 
     # Tokens
     
-    NUMBER = r'\d+'
+    NUMBER = r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)'
 
-    @_(r'\d+')
+    @_(r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)')
     def NUMBER(self, t):
-        t.value = int(t.value)
+        t.value = float(t.value)
+        if (t.value).is_integer():
+            t.value = int(t.value)
         return t
 
     # Special symbols
     PLUS = r'(add)'
     MINUS = r'(minus)'
-    TIMES = r'(multiplied)'
-    DIVIDE = r'(divided)'
+    MULTIPLIED = r'(multiplied)'
+    DIVIDED = r'(divided)'
     ASSIGN = r'(equals)'
     LPAREN = r'\('
     RPAREN = r'\)'
+    UMINUS = r'\-'
 
     NAME = r'[a-zA-Z_][a-zA-Z0-9_]*'
 
@@ -50,6 +50,12 @@ class BasicLexer(Lexer):
 
 class BasicParser(Parser):
     tokens = BasicLexer.tokens
+
+    precedence = (
+        ('left', 'PLUS', 'MINUS'),
+        ('left', 'MULTIPLIED', 'DIVIDED'),
+        ('right', 'UMINUS'),
+    )
 
     def __init__(self):
         self.names = {}
@@ -71,11 +77,11 @@ class BasicParser(Parser):
     def expr(self, p):
         return p.term
 
-    @_('term TIMES factor')
+    @_('term MULTIPLIED factor')
     def term(self, p):
         return p.term * p.factor
 
-    @_('term DIVIDE factor')
+    @_('term DIVIDED factor')
     def term(self, p):
         return p.term / p.factor
 
@@ -83,12 +89,20 @@ class BasicParser(Parser):
     def term(self, p):
         return p.factor
 
+    @_('LPAREN expr RPAREN')
+    def factor(self, p):
+        return p.expr
+
+    @_('UMINUS factor')
+    def factor(self, p):
+        return -p.factor
+
     @_('NUMBER')
     def factor(self, p):
         return p.NUMBER
 
     @_('NAME')
-    def expr(self, p):
+    def factor(self, p):
         try:
             return self.names[p.NAME]
         except LookupError:
@@ -100,8 +114,7 @@ if __name__ == '__main__':
     parser = BasicParser()
 
 #     test = '''
-# 5 add 5
-# x equals 5 add 5
+# 5 add ( 5 add 5 )
 #     '''
 
 #     for t in lexer.tokenize(test):
