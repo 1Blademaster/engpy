@@ -1,20 +1,25 @@
 # Negative numbers have been implemented
 # Using parenthesises have been implemented
 # Floating point numbers have been implemented
+# Precedence has been implemented
+# Using variables in expressions has been implemented
+# QUIT keyword to end program has been implemented
 
-# Using variables in expressions is not yet implemented
 # Error handling is not yet implemented, e.g. 0 / 0 will not work
-# An exit keyword is not yet implemented
+# If-else statements have not yet been implemented
+# Loops (while/if have not yet been implemented
 
 
 
 from sly import Lexer, Parser
 
 class BasicLexer(Lexer):
-    tokens = { NAME, NUMBER, PLUS, MULTIPLIED, MINUS, DIVIDED, ASSIGN, LPAREN, RPAREN, UMINUS }
+    tokens = {QUIT, NAME, NUMBER, PLUS, MULTIPLIED, MINUS, DIVIDED, ASSIGN, LPAREN, RPAREN, UMINUS, OUTPUT}
     ignore = ' \t'
 
     # Tokens
+
+    literals = {'[', ']'}
     
     NUMBER = r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)'
 
@@ -34,6 +39,9 @@ class BasicLexer(Lexer):
     LPAREN = r'\('
     RPAREN = r'\)'
     UMINUS = r'\-'
+
+    QUIT = r'(QUIT)'
+    OUTPUT = r'(output)'
 
     NAME = r'[a-zA-Z_][a-zA-Z0-9_]*'
 
@@ -59,30 +67,40 @@ class BasicParser(Parser):
 
     def __init__(self):
         self.names = {}
-    
+
+    @_('OUTPUT "{" expr "}"') # Note: return a tuple where the first item is an indication
+                              # on wether to print out the second item, e.g.
+                              # (1, 'output should be printed)
+                              # (0, 'output should not be printed)
+                              # and this will be decided in the __main__ section
+    def expr(self, p):
+        pass
+
+    @_('quitProgram')
+    def expr(self, p):
+        exit()
+
     @_('NAME ASSIGN expr')
     def expr(self, p):
         self.names[p.NAME] = p.expr
-        return p.expr
+        return self.names[p.NAME]
 
-    @_('expr PLUS term')
+    @_('expr PLUS term',
+       'expr MINUS term')
     def expr(self, p):
-        return p.expr + p.term
-
-    @_('expr MINUS term')
-    def expr(self, p):
+        if p[1] == 'add':
+            return p.expr + p.term
         return p.expr - p.term
 
     @_('term')
     def expr(self, p):
         return p.term
 
-    @_('term MULTIPLIED factor')
+    @_('term MULTIPLIED factor',
+       'term DIVIDED factor')
     def term(self, p):
-        return p.term * p.factor
-
-    @_('term DIVIDED factor')
-    def term(self, p):
+        if p[1] == 'multiplied':
+            return p.term * p.factor
         return p.term / p.factor
 
     @_('factor')
@@ -107,14 +125,21 @@ class BasicParser(Parser):
             return self.names[p.NAME]
         except LookupError:
             print(f'Undefined name {p.NAME!r}')
-            return 0
+            return
+
+    @_('QUIT')
+    def quitProgram(self, p):
+        return
+
+    
 
 if __name__ == '__main__':
     lexer = BasicLexer()
     parser = BasicParser()
 
 #     test = '''
-# 5 add ( 5 add 5 )
+# hello
+# x equals 5 hello
 #     '''
 
 #     for t in lexer.tokenize(test):
@@ -124,6 +149,7 @@ if __name__ == '__main__':
         try:
             text = input('engpy > ')
             result = parser.parse(lexer.tokenize(text))
-            print(result)
+            if result:
+                print(result)
         except EOFError:
             break

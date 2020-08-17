@@ -1,109 +1,104 @@
+# -----------------------------------------------------------------------------
+# calc.py
+# -----------------------------------------------------------------------------
+
+import sys
+sys.path.insert(0, "../..")
 
 from sly import Lexer, Parser
 
 class CalcLexer(Lexer):
-    # Set of token names.   This is always required
-    tokens = { NUMBER, ID, WHILE, IF, ELSE, PRINT,
-               PLUS, MINUS, TIMES, DIVIDE, ASSIGN,
-               EQ, LT, LE, GT, GE, NE }
-
-
-    literals = { '(', ')', '{', '}', ';' }
-
-    # String containing ignored characters
+    tokens = { NAME, NUMBER }
     ignore = ' \t'
+    literals = { '=', '+', '-', '*', '/', '(', ')' }
 
-    # Regular expression rules for tokens
-    PLUS    = r'(add)'
-    MINUS   = r'-'
-    TIMES   = r'\*'
-    DIVIDE  = r'/'
-    EQ      = r'=='
-    #ASSIGN  = r'(equals)'
-    LE      = r'<='
-    LT      = r'<'
-    GE      = r'>='
-    GT      = r'>'
-    NE      = r'!='
+    # Tokens
+    NAME = r'[a-zA-Z_][a-zA-Z0-9_]*'
 
     @_(r'\d+')
     def NUMBER(self, t):
         t.value = int(t.value)
         return t
 
-    # Identifiers and keywords
-    ID = r'[a-zA-Z_][a-zA-Z0-9_]*'
-    ID['if'] = IF
-    ID['else'] = ELSE
-    ID['while'] = WHILE
-    ID['print'] = PRINT
-    ID['equals'] = ASSIGN
-
-    ignore_comment = r'\#.*'
-
-    # Line number tracking
     @_(r'\n+')
-    def ignore_newline(self, t):
+    def newline(self, t):
         self.lineno += t.value.count('\n')
 
     def error(self, t):
-        print('Line %d: Bad character %r' % (self.lineno, t.value[0]))
+        print("Illegal character '%s'" % t.value[0])
         self.index += 1
 
 class CalcParser(Parser):
-    # Get the token list from the lexer (required)
     tokens = CalcLexer.tokens
 
-    @_('ID ASSIGN NUMBER')
+    precedence = (
+        ('left', '+', '-'),
+        ('left', '*', '/'),
+        ('right', UMINUS),
+        )
+
+    def __init__(self):
+        self.names = { }
+
+    @_('NAME NAME')
+    def test(self, p):
+        return 'ok'
+
+    @_('test')
+    def test(self, p):
+        return 'k'
+
+    @_('NAME "=" expr')
     def statement(self, p):
-        print(p.NUMBER)
+        self.names[p.NAME] = p.expr
 
-    # Grammar rules and actions
-    @_('expr PLUS term')
+    @_('expr')
+    def statement(self, p):
+        print(p.expr)
+
+    @_('expr "+" expr')
     def expr(self, p):
-        return p.expr + p.term
+        return p.expr0 + p.expr1
 
-    @_('expr MINUS term')
+    @_('expr "-" expr')
     def expr(self, p):
-        return p.expr - p.term
+        return p.expr0 - p.expr1
 
-    @_('term')
+    @_('expr "*" expr')
     def expr(self, p):
-        return p.term
+        return p.expr0 * p.expr1
 
-    @_('term TIMES factor')
-    def term(self, p):
-        return p.term * p.factor
+    @_('expr "/" expr')
+    def expr(self, p):
+        return p.expr0 / p.expr1
 
-    @_('term DIVIDE factor')
-    def term(self, p):
-        return p.term / p.factor
+    @_('"-" expr %prec UMINUS')
+    def expr(self, p):
+        return -p.expr
 
-    @_('factor')
-    def term(self, p):
-        return p.factor
+    @_('"(" expr ")"')
+    def expr(self, p):
+        return p.expr
 
     @_('NUMBER')
-    def factor(self, p):
+    def expr(self, p):
         return p.NUMBER
+
+    @_('NAME')
+    def expr(self, p):
+        try:
+            return self.names[p.NAME]
+        except LookupError:
+            print("Undefined name '%s'" % p.NAME)
+            return 0
 
 if __name__ == '__main__':
     lexer = CalcLexer()
     parser = CalcParser()
-
     while True:
         try:
             text = input('calc > ')
-            result = parser.parse(lexer.tokenize(text))
-            print(result)
         except EOFError:
             break
-
-if __name__ == '__main__':
-    data = '''
-x equals 0
-x equals x add 1
-'''
-    lexer = CalcLexer()
-    for tok in lexer.tokenize(data):
-        print(tok)
+        if text:
+            parser.parse(lexer.tokenize(text))
