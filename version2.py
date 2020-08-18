@@ -4,6 +4,8 @@
 # Precedence has been implemented
 # Using variables in expressions has been implemented
 # QUIT keyword to end program has been implemented
+# An output token has been made to output information to the user
+# An Interpreter class has been made to read from multiline strings/files
 
 # Error handling is not yet implemented, e.g. 0 / 0 will not work
 # If-else statements have not yet been implemented
@@ -19,7 +21,7 @@ class BasicLexer(Lexer):
 
     # Tokens
 
-    literals = {'[', ']'}
+    literals = {'(', ')', '[', ']'}
     
     NUMBER = r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)'
 
@@ -36,8 +38,6 @@ class BasicLexer(Lexer):
     MULTIPLIED = r'(multiplied)'
     DIVIDED = r'(divided)'
     ASSIGN = r'(equals)'
-    LPAREN = r'\('
-    RPAREN = r'\)'
     UMINUS = r'\-'
 
     QUIT = r'(QUIT)'
@@ -68,13 +68,13 @@ class BasicParser(Parser):
     def __init__(self):
         self.names = {}
 
-    @_('OUTPUT "{" expr "}"') # Note: return a tuple where the first item is an indication
+    @_('OUTPUT "[" expr "]"') # Note: return a tuple where the first item is an indication
                               # on wether to print out the second item, e.g.
                               # (1, 'output should be printed)
                               # (0, 'output should not be printed)
                               # and this will be decided in the __main__ section
     def expr(self, p):
-        pass
+        return p.expr, 1
 
     @_('quitProgram')
     def expr(self, p):
@@ -107,7 +107,7 @@ class BasicParser(Parser):
     def term(self, p):
         return p.factor
 
-    @_('LPAREN expr RPAREN')
+    @_('"(" expr ")"')
     def factor(self, p):
         return p.expr
 
@@ -131,25 +131,40 @@ class BasicParser(Parser):
     def quitProgram(self, p):
         return
 
-    
+
+
+class Interpreter():
+    def __init__(self, lexer, parser):
+        self.lexer = lexer
+        self.parser = parser
+
+    def output(self, inputData):
+        try:
+            for line in inputData.splitlines():
+                result = self.parser.parse(self.lexer.tokenize(line))
+                if type(result) == tuple:
+                    return result[0]
+        except EOFError as e:
+            print(e)
+
+
 
 if __name__ == '__main__':
     lexer = BasicLexer()
     parser = BasicParser()
 
-#     test = '''
-# hello
-# x equals 5 hello
-#     '''
+    # test = '''
+    # x equals 5
+    # output[x add 5]'''
 
-#     for t in lexer.tokenize(test):
-#         print(t)
+    # for t in lexer.tokenize(test):
+    #     print(t)
 
     while True:
         try:
             text = input('engpy > ')
             result = parser.parse(lexer.tokenize(text))
-            if result:
-                print(result)
+            if type(result) == tuple:
+                print(result[0])
         except EOFError:
             break
