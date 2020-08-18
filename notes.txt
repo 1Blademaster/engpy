@@ -1,0 +1,11 @@
+Variables:
+
+For loop:
+
+While loop:
+LE: less than, GE: greater than, LEE: less than or equal, GEE: greater than or equal
+- while [ condition ] do..
+- NAME >/>=/</<= NUMBER - Check if this is true, if it is then execute code in loop
+- TRUE - TRUE keyword representing a boolean variable
+
+If-else statement:

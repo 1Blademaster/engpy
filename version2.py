@@ -9,7 +9,7 @@
 
 # Error handling is not yet implemented, e.g. 0 / 0 will not work
 # If-else statements have not yet been implemented
-# Loops (while/if have not yet been implemented
+# Loops (while/for) have not yet been implemented
 
 
 
