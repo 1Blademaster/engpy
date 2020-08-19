@@ -9,3 +9,18 @@ LE: less than, GE: greater than, LEE: less than or equal, GEE: greater than or e
 - TRUE - TRUE keyword representing a boolean variable
 
 If-else statement:
+
+
+
+
+
+
+
+GRAMMAR:
+
+Square brackets and parentheses need spaces before and after the character;
+e.g.
+[123] - Will not work
+[ 123 ] - Will work
+(123) - Will not work
+( 123 ) - Will work

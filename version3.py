@@ -1,11 +1,5 @@
-# Negative numbers have been implemented
-# Using parenthesises have been implemented
-# Floating point numbers have been implemented
-# Precedence has been implemented
-# Using variables in expressions has been implemented
-# QUIT keyword to end program has been implemented
-# An output token has been made to output information to the user
-# An Interpreter class has been made to read from multiline strings/files
+# Added Strings 
+# Added variable class to store the type of variables as well as value etc
 
 # Error handling is not yet implemented, e.g. 0 / 0 will not work
 # If-else statements have not yet been implemented
@@ -16,39 +10,40 @@
 from sly import Lexer, Parser
 
 class BasicLexer(Lexer):
-    tokens = {QUIT, NAME, NUMBER, PLUS, MULTIPLIED, MINUS, DIVIDED, ASSIGN, UMINUS, OUTPUT}
+    tokens = {QUIT, VAR, NUMBER, ADD, MULTIPLIED, MINUS, DIVIDED, ASSIGN, UMINUS, LPAREN, RPAREN, LSBRAC, RSBRAC, OUTPUT, DQUOTE, STRING}
     ignore = ' \t'
 
-    # Tokens
-
-    literals = {'(', ')', '[', ']'}
+    # literals = {'[', ']',}
     
-    NUMBER = r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)'
+    NUMBER = r'(?<!\S)[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)(?!\S)'
 
-    @_(r'[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)')
+    @_(r'(?<!\S)[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)(?!\S)')
     def NUMBER(self, t):
         t.value = float(t.value)
         if (t.value).is_integer():
             t.value = int(t.value)
         return t
 
-    # Special symbols
-    PLUS = r'(add)'
+    ADD = r'(add)'
     MINUS = r'(minus)'
     MULTIPLIED = r'(multiplied)'
     DIVIDED = r'(divided)'
     ASSIGN = r'(equals)'
     UMINUS = r'\-'
+    DQUOTE = r'\"'
+    LPAREN = r'\('
+    RPAREN = r'\)'
+    LSBRAC = r'\['
+    RSBRAC = r'\]'
 
     QUIT = r'(QUIT)'
     OUTPUT = r'(output)'
+    
+    VAR = r'(?<!\S)[a-zA-Z_][a-zA-Z0-9_]*(?!\S)'
+    STRING = r'([^\[\][\n"]+)'
 
-    NAME = r'[a-zA-Z_][a-zA-Z0-9_]*'
-
-    # Ignored pattern
     ignore_newline = r'\n+'
 
-    # Extra action for newlines
     def ignore_newline(self, t):
         self.lineno += t.value.count('\n')
 
@@ -60,32 +55,38 @@ class BasicParser(Parser):
     tokens = BasicLexer.tokens
 
     precedence = (
-        ('left', 'PLUS', 'MINUS'),
+        ('left', 'ADD', 'MINUS'),
         ('left', 'MULTIPLIED', 'DIVIDED'),
+        # ('left', '(', ')'),
         ('right', 'UMINUS'),
     )
 
     def __init__(self):
-        self.names = {}
+        self.VARs = {}
 
-    @_('OUTPUT "[" expr "]"') # Note: return a tuple where the first item is an indication
-                              # on wether to print out the second item, e.g.
-                              # (1, 'output should be printed)
-                              # (0, 'output should not be printed)
-                              # and this will be decided in the __main__ section
+    @_('OUTPUT LSBRAC expr RSBRAC',
+       'OUTPUT LSBRAC string RSBRAC')
     def expr(self, p):
-        return p.expr, 1
+        return p[2], 1
 
     @_('quitProgram')
     def expr(self, p):
         exit()
 
-    @_('NAME ASSIGN expr')
+    @_('VAR ASSIGN expr',
+       'VAR ASSIGN string')
     def expr(self, p):
-        self.names[p.NAME] = p.expr
-        return self.names[p.NAME]
+        var = p[2]
+        if type(var) == int:
+            varType = int
+        elif type(var) == float:
+            varType = float
+        else:
+            varType = str
+        self.VARs[p.VAR] = variable(varType, var)
+        return self.VARs[p.VAR].value
 
-    @_('expr PLUS term',
+    @_('expr ADD term',
        'expr MINUS term')
     def expr(self, p):
         if p[1] == 'add':
@@ -107,7 +108,7 @@ class BasicParser(Parser):
     def term(self, p):
         return p.factor
 
-    @_('"(" expr ")"')
+    @_('LPAREN expr RPAREN')
     def factor(self, p):
         return p.expr
 
@@ -119,17 +120,22 @@ class BasicParser(Parser):
     def factor(self, p):
         return p.NUMBER
 
-    @_('NAME')
+    @_('VAR')
     def factor(self, p):
         try:
-            return self.names[p.NAME]
+            return self.VARs[p.VAR].value
         except LookupError:
-            print(f'Undefined name {p.NAME!r}')
+            print(f'Undefined VAR {p.VAR!r}')
             return
 
     @_('QUIT')
     def quitProgram(self, p):
         return
+
+    @_('DQUOTE VAR DQUOTE',
+       'DQUOTE STRING DQUOTE')
+    def string(self, p):
+        return p[1]
 
 
 
@@ -149,16 +155,25 @@ class Interpreter():
 
 
 
+class variable():
+    def __init__(self, type, value):
+        self.type = type
+        self.value = value
+
+    def __repr__(self):
+        return f'{self.value}'
+
+
 if __name__ == '__main__':
     lexer = BasicLexer()
     parser = BasicParser()
 
-    # test = '''
-    # x equals 5
-    # output[x add 5]'''
+    test = '''
+    "hello"
+    ( 5 add 5 )'''
 
-    # for t in lexer.tokenize(test):
-    #     print(t)
+    for t in lexer.tokenize(test):
+        print(t)
 
     while True:
         try:
