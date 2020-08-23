@@ -7,3 +7,89 @@ term = factor ((MULTIPLIED or DIVIDED) factor)
 factor = INT or FLOAT
        = (ADD or MINUS) factor # Positive or negative number
 	   = LPAREN expr RPAREN 
+
+AST: Abstract Syntax Tree
+Lexer: A lexer seperates a stream of characters(text) into tokens
+Parser: A parser takes tokens and builds expressions out of them, these expressions are executionable pieces of code
+Token: A single element of a programing language (e.g. data value, keyword or punctuation)
+
+
+CLASSES:
+
+Error - pos_start, pos_end, name, details:
+This class shows the type of error as well as which line it is on, and a description can be added.
+
+IllegalCharError - 
+InvalidSyntaxError - 
+RunTimeError - pos_start, pos_end, details:
+These are child classes of the main Error class and show the type of error it is, deduced by the name.
+
+RunTimeResult - :
+
+
+Token - type_, value, pos_start, pos_end:
+This class is to instantiate the token into an object which can be acted upon.
+
+Position - index, line_number, column, file_name, file_text:
+This class helps keep position of the different tokens in the token stream, this can help identify errors
+as well as move onto the next token when interpreting the code. This class also keeps data such as line number
+and column number of a token.
+
+Lexer - file_name, text:
+This is the main class which takes text and converts it into a list of tokens which can then be parsed and interpreted
+if there are no errors. It's method makeTokens is going through a loop looking at the individual characters in the text
+and then either appending a Token to the tokens list, or executing a method to find out which token is needed to be 
+appended to the list. In the makeNumber method, it will go through a number, making sure each character is an interger,
+as well as seeing if there is only one (max) decimal point, and then it will create an interger Token or float Token
+based on the number it read through. The makeBinOp method is a similar method which looks for the keywords ADD, MINUS,
+MULTIPLIED and DIVIDED to figure out which binary operation to complete on the number values. It does this by going through
+the consecutive characters and added them together to create one of the keywords, if the word created matches then the 
+operation Token is returned, otherwise an error is returned. The makeTokens method will return an IllegalCharError object
+if there is a character which does not come under any declared characters of the language.
+
+numberNode - token:
+This class is used to represent a number on an AST, it holds the Token object for the number.
+
+binOpNode - left_node, op_token, right_node:
+This class is the node used for a binary operation in an AST. The left_node is the node on the left hand side of the operator,
+right_node is the node on the right.
+
+unaryOpNode - op_token, node:
+This class is used to check to see if there is an operator token before a node object. This is used to store values such as 
+negative numbers and expressions.
+
+Parser - tokens:
+This class takes the list of tokens fetched from the lexer and then parses them to create an AST, which can then be interpreted.
+The parser follows a set of grammar rules (top of notes.txt page) to parse the tokens. It first tries to execute the expr method,
+this returns a binOp method, which checks the left, operator, and right node in the expression and trturns an binOpNode which
+the 3 nodes of the expression in the AST. This is done on a loop. The first argument 'func' in the binOp method leads to the
+return of the right expression, this checks if there is a '+' or '-' infront of the number, if the number is an integer or float,
+and if there are any parantheses in the expression, if there are, then it recursively calls in expr method inside the parantheses
+to get the binOpNode for the value inside. The parse method will also return an InvalidSyntaxError object indicating a missing 
+binary operator. The factor method will also return InvalidSyntaxError objects if there is a missing
+parenthesis or number.
+
+ParseResult - :
+
+Number - value:
+This class is responsible for returning the answer to a binary operation on two numbers. This class has different methods for
+addition, subtraction, multiplication and division which are called in the Interpreter class and return another Number object
+where it's value is set to the answer of the binary operation. It will also output a RunTimeError object with the detail of 
+'Division by zero' if that was attempted by the user.
+
+Interpreter - node:
+This class is used to traverse the AST and return the end value for the expression which was inputted by the user. It achieves
+this by going to the different nodes in the tree and figuring out which binary operation to do on the left and right node of the
+operator. There are different methods for visiting the different types of nodes. The visit_numberNode method just returns the number
+and has no error checks because a plain number can have no errors. The visit_binOpNode checks the binary operator and exectures the
+correct method in the Number class to calculate the answer to the operation. The visit_unaryOpNode checks if there is a '-' token 
+infront of the number token and then multiplies the number by -1 to make it negative.
+
+
+
+Functions:
+
+run - file_name, text:
+This function is used to run the program, it creates an instance of a Lexer class and then gets the tokens from the lexer which are then
+used in an instance of the Parser class to create an AST which is then traversed by an instance of the Interpreter class which then
+returns the correct output for the expression. If there are any errors during this process then they will be outputted as well.

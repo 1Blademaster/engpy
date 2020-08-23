@@ -32,7 +32,30 @@ class IllegalCharError(Error):
 
 class InvalidSyntaxError(Error):
 	def __init__(self, pos_start, pos_end, details):
-		super().__init__(pos_start, pos_end, 'Illegal character', details)
+		super().__init__(pos_start, pos_end, 'Invalid syntax', details)
+
+
+class RunTimeError(Error):
+	def __init__(self, pos_start, pos_end, details):
+		super().__init__(pos_start, pos_end, 'Runtime error', details)
+
+
+class RunTimeResult:
+	def __init__(self):
+		self.value = None
+		self.error = None
+
+	def register(self, res):
+		if res.error: self.error = res.error
+		return res.value
+
+	def success(self, value):
+		self.value = value
+		return self
+
+	def failure(self, error):
+		self.error = error
+		return self
 
 
 class Token:
@@ -161,6 +184,8 @@ class Lexer:
 class numberNode:
 	def __init__(self, token):
 		self.token = token
+		self.pos_start = self.token.pos_start
+		self.pos_end = self.token.pos_end
 	
 	def __repr__(self):
 		return f'{self.token}'
@@ -171,38 +196,23 @@ class binOpNode:
 		self.left_node = left_node
 		self.op_token = op_token
 		self.right_node = right_node
+		self.pos_start = left_node.pos_start
+		self.pos_end = right_node.pos_end
 
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
 
 
-class UnaryOpNode:
+class unaryOpNode:
 	def __init__(self, op_token, node):
-		self.op_tok = op_token
+		self.op_token = op_token
 		self.node = node
+		self.pos_start = self.op_token.pos_start
+		self.pos_end = self.node.pos_end
 
 	def __repr__(self):
 		return f'({self.op_tok}, {self.node})'
 
-
-class ParseResult:
-	def __init__(self):
-		self.error = None
-		self.node = None
-
-	def register(self, res):
-		if isinstance(res, ParseResult):
-			if res.error: self.error = res.error
-			return res.node
-		return res
-
-	def success(self, node):
-		self.node = node
-		return self
-
-	def failure(self, error):
-		self.error = error
-		return self
 
 class Parser:
 	def __init__(self, tokens):
@@ -226,11 +236,11 @@ class Parser:
 	def factor(self):
 		res = ParseResult()
 		tok = self.current_tok
-		if tok.type in (T_ADD, T_MINUS):
+		if tok.type in [T_ADD, T_MINUS]:
 			res.register(self.advance())
 			factor = res.register(self.factor())
 			if res.error: return res
-			return res.success(UnaryOpNode(tok, factor))
+			return res.success(unaryOpNode(tok, factor))
 		elif tok.type in [T_INT, T_FLOAT]:
 			res.register(self.advance())
 			return res.success(numberNode(tok))
@@ -267,7 +277,104 @@ class Parser:
 		return res.success(left)
 
 
+class ParseResult:
+	def __init__(self):
+		self.error = None
+		self.node = None
 
+	def register(self, res):
+		if isinstance(res, ParseResult):
+			if res.error: self.error = res.error
+			return res.node
+		return res
+
+	def success(self, node):
+		self.node = node
+		return self
+
+	def failure(self, error):
+		self.error = error
+		return self
+
+
+class Number:
+	def __init__(self, value):
+		self.value = value
+		self.setPos()
+
+	def setPos(self, pos_start=None, pos_end=None):
+		self.pos_start = pos_start
+		self.pos_end = pos_end
+		return self
+
+	def addedTo(self, other):
+		if isinstance(other, Number):
+			return Number(self.value + other.value), None
+
+	def minusTo(self, other):
+		if isinstance(other, Number):
+			return Number(self.value - other.value), None
+
+	def multipliedTo(self, other):
+		if isinstance(other, Number):
+			return Number(self.value * other.value), None
+
+	def dividedTo(self, other):
+		if isinstance(other, Number):
+			if other.value == 0:
+				return None, RunTimeError(other.pos_start, other.pos_end, 'Division by zero')
+			return Number(self.value / other.value), None
+
+	def __repr__(self):
+		return f'{self.value}'
+
+
+
+class Interpreter:
+	def visit(self, node):
+		method_name = f'visit_{type(node).__name__}'
+		method = getattr(self, method_name, self.noVisitMethod)
+		return method(node)
+		
+	def noVisitMethod(self, node):
+		raise Exception(f'No visit_{type(node).__name__} method defined')
+
+	def visit_numberNode(self, node):
+		return RunTimeResult().success(Number(node.token.value).setPos(node.pos_start, node.pos_end))
+
+	def visit_binOpNode(self, node):
+		res = RunTimeResult()
+		left = res.register(self.visit(node.left_node))
+		right = res.register(self.visit(node.right_node))
+		if res.error: return res
+
+		if node.op_token.type == T_ADD:
+			result, error = left.addedTo(right)
+		if node.op_token.type == T_MINUS:
+			result, error = left.minusTo(right)
+		if node.op_token.type == T_MULTIPLIED:
+			result, error = left.multipliedTo(right)
+		if node.op_token.type == T_DIVIDED:
+			result, error = left.dividedTo(right)
+
+		if error:
+			return res.failure(error)
+
+		return res.success(result.setPos(node.pos_start, node.pos_end))
+
+	def visit_unaryOpNode(self, node):
+		res = RunTimeResult()
+		number = res.register(self.visit(node.node))
+		if res.error: return res
+
+		error = None
+		if node.op_token.type == T_MINUS:
+			number, error = number.multipliedTo(Number(-1))
+
+		if error:
+			return res.failure(error)
+
+		return res.success(number.setPos(node.pos_start, node.pos_end))
 
 
 
@@ -281,5 +388,9 @@ def run(file_name, text):
 
 	parser = Parser(tokens)
 	ast = parser.parse()
+	if ast.error: return None, ast.error
 
-	return ast.node, ast.error
+	interpreter = Interpreter()
+	result = interpreter.visit(ast.node)
+
+	return result.value, result.error
