@@ -1,4 +1,6 @@
-GRAMMAR:
+#################
+GRAMMAR
+#################
 
 expr = term ((ADD or MINUS) term) # Least priority
 
@@ -8,13 +10,22 @@ factor = INT or FLOAT
        = (ADD or MINUS) factor # Positive or negative number
 	   = LPAREN expr RPAREN 
 
+
+
+#################
+DEFINITIONS
+#################
+
 AST: Abstract Syntax Tree
 Lexer: A lexer seperates a stream of characters(text) into tokens
 Parser: A parser takes tokens and builds expressions out of them, these expressions are executionable pieces of code
 Token: A single element of a programing language (e.g. data value, keyword or punctuation)
 
 
-CLASSES:
+
+#################
+CLASSES
+#################
 
 Error - pos_start, pos_end, name, details:
 This class shows the type of error as well as which line it is on, and a description can be added.
@@ -87,7 +98,9 @@ infront of the number token and then multiplies the number by -1 to make it nega
 
 
 
-Functions:
+#################
+FUNCTIONS
+#################
 
 run - file_name, text:
 This function is used to run the program, it creates an instance of a Lexer class and then gets the tokens from the lexer which are then
