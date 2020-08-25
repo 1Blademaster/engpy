@@ -2,9 +2,11 @@ import string
 
 DIGITS = '0123456789'
 VARCHARS = string.ascii_letters + '_'
+STRINGCHARS = string.printable#.replace('"', '')
 
 T_INT = 'INT'
 T_FLOAT = 'FLOAT'
+T_STRING = 'STRING'
 
 T_ADD = 'ADD'
 T_MINUS = 'MINUS'
@@ -41,7 +43,7 @@ class IllegalCharError(Error):
 
 class InvalidSyntaxError(Error):
 	def __init__(self, pos_start, pos_end, details):
-		super().__init__(pos_start, pos_end, 'Invalid syntax', details)
+		super().__init__(pos_start, pos_end, 'Syntax error', details)
 
 
 class RunTimeError(Error):
@@ -81,7 +83,10 @@ class Token:
 			self.pos_end = pos_end.copy()
 
 	def __repr__(self):
-		if self.value: return f'{self.type}:{self.value}'
+		if self.value: 
+			if self.type == T_STRING:
+				return f'{self.type}:"{self.value}"'
+			return f'{self.type}:{self.value}'
 		return f'{self.type}'
 
 
@@ -124,22 +129,29 @@ class Lexer:
 		while self.current_char != None:
 			if self.current_char in ' \t':
 				self.advance()
+			elif self.current_char == '"':
+				pos_start = self.pos.copy()
+				s = self.makeString()
+				if s[0] == 'error':
+					return [], InvalidSyntaxError(pos_start, self.pos, s[1])
+				else:
+					tokens.append(s[0])
 			elif self.current_char in DIGITS:
 				tokens.append(self.makeNumber())
 			elif self.current_char in VARCHARS:
 				tokens.append(self.makeKeywordToken())
-			elif self.current_char == '+':
-				tokens.append(Token(T_ADD, pos_start=self.pos))
-				self.advance()
-			elif self.current_char == '-':
-				tokens.append(Token(T_MINUS, pos_start=self.pos))
-				self.advance()
-			elif self.current_char == '*':
-				tokens.append(Token(T_MULTIPLIED, pos_start=self.pos))
-				self.advance()
-			elif self.current_char == '/':
-				tokens.append(Token(T_DIVIDED, pos_start=self.pos))
-				self.advance()
+			# elif self.current_char == '+':
+			# 	tokens.append(Token(T_ADD, pos_start=self.pos))
+			# 	self.advance()
+			# elif self.current_char == '-':
+			# 	tokens.append(Token(T_MINUS, pos_start=self.pos))
+			# 	self.advance()
+			# elif self.current_char == '*':
+			# 	tokens.append(Token(T_MULTIPLIED, pos_start=self.pos))
+			# 	self.advance()
+			# elif self.current_char == '/':
+			# 	tokens.append(Token(T_DIVIDED, pos_start=self.pos))
+			# 	self.advance()
 			elif self.current_char == '(':
 				tokens.append(Token(T_LPAREN, pos_start=self.pos))
 				self.advance()
@@ -169,32 +181,41 @@ class Lexer:
 			self.advance()
 		return Token(T_INT, int(num), pos_start, self.pos) if decimal == 0 else Token(T_FLOAT, float(num), pos_start, self.pos)
 
-	def makeBinOp(self): # Decapiated
-		op = ''
-		pos_start = self.pos.copy()
-		while self.current_char != None and self.current_char in 'ADEILMNPSTUV':
-			op += self.current_char
-			self.advance()
-		if op == 'ADD': return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
-		elif op == 'MINUS': return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
-		elif op == 'MULTIPLIED': return Token(T_MULTIPLIED, pos_start=pos_start, pos_end=self.pos)
-		elif op == 'DIVIDED': return Token(T_DIVIDED, pos_start=pos_start, pos_end=self.pos)
-		else: return 'Error'
-
 	def makeKeywordToken(self):
-		string = ''
+		kword = ''
 		pos_start = self.pos.copy()
 		while self.current_char != None and self.current_char in VARCHARS:
-			string += self.current_char
+			kword += self.current_char
 			self.advance()
 
-		if string == 'ADD': return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
-		elif string == 'MINUS': return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
-		elif string == 'MULTIPLIED': return Token(T_MULTIPLIED, pos_start=pos_start, pos_end=self.pos)
-		elif string == 'DIVIDED': return Token(T_DIVIDED, pos_start=pos_start, pos_end=self.pos)
-		elif string == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
-		#elif string == 'VAR': return Token(T_VAR, pos_start=pos_start, pos_end=self.pos)
-		else: return Token(T_VAR, value=string, pos_start=pos_start, pos_end=self.pos)
+		if kword == 'ADD': return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'MINUS': return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'MULTIPLIED': return Token(T_MULTIPLIED, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'DIVIDED': return Token(T_DIVIDED, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
+		#elif kword == 'VAR': return Token(T_VAR, pos_start=pos_start, pos_end=self.pos)
+		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
+
+	def makeString(self):
+		string = ''
+		quotes_num = 0
+		pos_start = self.pos.copy()
+		while self.current_char != None and self.current_char in STRINGCHARS:
+			print(self.current_char)
+			if self.current_char == '"':
+				quotes_num += 1
+				print(quotes_num)
+				if quotes_num == 2:
+					self.advance()
+					break
+			else:
+				string += self.current_char
+			self.advance()
+
+		if quotes_num == 1:
+			return 'error', 'Expected ' + '"'
+
+		return Token(T_STRING, value=string, pos_start=pos_start, pos_end=self.pos), None
 
 
 class numberNode:
@@ -301,7 +322,7 @@ class Parser:
 			else:
 				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')'"))
 
-		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Expected INT or FLOAT'))
+		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Invalid syntax'))
 
 	def term(self):
 		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
