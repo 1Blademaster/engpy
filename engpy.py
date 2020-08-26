@@ -20,6 +20,8 @@ T_EOF = 'EOF'
 
 T_VAR = 'VAR'
 T_EQUALS = 'EQUALS'
+T_LENGTH = 'LENGTH'
+T_JOIN = 'JOIN'
 
 VARS_SAVED = {}
 
@@ -31,9 +33,19 @@ class Error:
 		self.details = details
 
 	def asString(self):
-		result = f'''{self.name}: {self.details}
-File {self.pos_start.fn}, line {self.pos_start.ln + 1}'''
+		result = f'''{self.showArrows()}\n{self.name}: {self.details}\nFile {self.pos_start.fn}, line {self.pos_start.ln + 1}'''
 		return result
+
+	def showArrows(self):
+		arrows = '        '
+		arrows += ' ' * (self.pos_start.col)
+		arrows += '^'
+		if self.pos_start == self.pos_end:
+			return arrows
+		else:
+			difference = self.pos_end.col - self.pos_start.col
+			arrows += '^' * (difference)
+			return arrows
 
 
 class IllegalCharError(Error):
@@ -193,7 +205,8 @@ class Lexer:
 		elif kword == 'MULTIPLIED': return Token(T_MULTIPLIED, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'DIVIDED': return Token(T_DIVIDED, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
-		#elif kword == 'VAR': return Token(T_VAR, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'LENGTH': return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'JOIN': return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -201,10 +214,8 @@ class Lexer:
 		quotes_num = 0
 		pos_start = self.pos.copy()
 		while self.current_char != None and self.current_char in STRINGCHARS:
-			print(self.current_char)
 			if self.current_char == '"':
 				quotes_num += 1
-				print(quotes_num)
 				if quotes_num == 2:
 					self.advance()
 					break
@@ -216,7 +227,6 @@ class Lexer:
 			return 'error', 'Expected ' + '"'
 
 		return Token(T_STRING, value=string, pos_start=pos_start, pos_end=self.pos), None
-
 
 class numberNode:
 	def __init__(self, token):
@@ -276,6 +286,41 @@ class varNode:
 	def __repr__(self):
 		return f'({self.node})'
 
+
+class stringNode:
+	def __init__(self, token):
+		self.type = 'stringNode'
+		self.token = token
+		self.pos_start = self.token.pos_start
+		self.pos_end = self.token.pos_end
+	
+	def __repr__(self):
+		return f'{self.token}'
+
+
+class stringLengthNode:
+	def __init__(self, token):
+		self.type = 'stringLengthNode'
+		self.token = token
+		self.pos_start = self.token.pos_start
+		self.pos_end = self.token.pos_end
+	
+	def __repr__(self):
+		return f'Length({self.token})'
+
+	
+class stringOpNode:
+	def __init__(self, left_node, op_token, right_node):
+		self.type = 'stringOpNode'
+		self.left_node = left_node
+		self.op_token = op_token
+		self.right_node = right_node
+		self.pos_start = left_node.pos_start
+		self.pos_end = right_node.pos_end
+
+	def __repr__(self):
+		return f'({self.left_node}, {self.op_token}, {self.right_node})'
+
 class Parser:
 	def __init__(self, tokens):
 		self.tokens = tokens
@@ -293,10 +338,34 @@ class Parser:
 		if self.tok_idx == 0 and self.tokens[self.tok_idx].type == T_VAR and self.tokens[self.tok_idx + 1].type == T_EQUALS:
 			res = self.varAssign()
 		else:
-			res = self.expr()
+			if self.checkIfStringNotLengthInTokens():
+				res = self.stringOp()
+			else:
+				res = self.expr()
 			if not res.error and self.current_tok.type != T_EOF:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected ADD, MINUS, MULTIPLIED, DIVIDED or EQUALS'))
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Syntax error'))
 		return res
+
+	def checkIfStringInTokens(self):
+		string_found = False
+		for tok in self.tokens[self.tok_idx:]:
+			if tok.type == T_STRING:
+				string_found = True
+
+		return string_found
+
+	def checkIfStringNotLengthInTokens(self):
+		string_found = False
+		for tok in self.tokens[self.tok_idx:]:
+			if tok.type == T_STRING:
+				string_found = True
+
+		if not string_found:
+			return False
+		for tok in self.tokens:
+			if tok.type == T_LENGTH:
+				return False
+		return True
 
 	def factor(self):
 		res = ParseResult()
@@ -304,6 +373,14 @@ class Parser:
 		if tok.type == T_VAR:
 			res.register(self.advance())
 			return res.success(varNode(tok))
+		elif tok.type == T_STRING:
+			res.register(self.advance())
+			return res.success(stringNode(tok))
+		elif tok.type == T_LENGTH:
+			res.register(self.advance())
+			string = res.register(self.stringOp())
+			if res.error: return res
+			return res.success(stringLengthNode(string))
 		elif tok.type in [T_ADD, T_MINUS]:
 			res.register(self.advance())
 			factor = res.register(self.factor())
@@ -314,7 +391,10 @@ class Parser:
 			return res.success(numberNode(tok))
 		elif tok.type == T_LPAREN:
 			res.register(self.advance())
-			expr = res.register(self.expr())
+			if self.checkIfStringInTokens():
+				expr = res.register(self.stringOp())
+			else:
+				expr = res.register(self.expr())
 			if res.error: return res
 			if self.current_tok.type == T_RPAREN:
 				res.register(self.advance())
@@ -338,12 +418,14 @@ class Parser:
 			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected EQUALS"))
 		else:
 			res.register(self.advance())
-			var_val = res.register(self.expr())
+			if self.checkIfStringNotLengthInTokens():
+				var_val = res.register(self.stringOp())
+			else:
+				var_val = res.register(self.expr())
 
 		if res.error: return res
 
 		return res.success(varAssignNode(var, var_val))
-		# make a varNode for AST where value is equal to var name and node is equal to expr connected to var
 
 	def binOp(self, func, ops):
 		res = ParseResult()
@@ -357,6 +439,20 @@ class Parser:
 			if res.error: return res
 
 			left = binOpNode(left, op_tok, right)
+		return res.success(left)
+
+	def stringOp(self):
+		res = ParseResult()
+		left = res.register(self.factor())
+		if res.error: return res
+
+		while self.current_tok.type in [T_JOIN, T_MULTIPLIED]:
+			op_tok = self.current_tok
+			res.register(self.advance())
+			right = res.register(self.factor())
+			if res.error: return res
+
+			left = stringOpNode(left, op_tok, right)
 		return res.success(left)
 
 
@@ -412,6 +508,31 @@ class Number:
 		return f'{self.value}'
 
 
+class String:
+	def __init__(self, value):
+		self.value = str(value)
+		self.setPos()
+
+	def setPos(self, pos_start=None, pos_end=None):
+		self.pos_start = pos_start
+		self.pos_end = pos_end
+		return self
+
+	def joinedTo(self, other):
+		if isinstance(other, String):
+			return String(self.value + other.value), None
+		return None, RunTimeError(self.pos_start, other.pos_end, 'You can only join strings together')
+	
+	def multipliedTo(self, other):
+		if isinstance(other, Number):
+			return String(self.value * other.value), None
+
+	def lengthOf(self):
+		return Number(len(self.value)), None
+
+	def __repr__(self):
+		return f'"{self.value}"'
+
 
 class Interpreter:
 	def visit(self, node):
@@ -429,16 +550,17 @@ class Interpreter:
 		res = RunTimeResult()
 		left = res.register(self.visit(node.left_node))
 		right = res.register(self.visit(node.right_node))
+		op_tok_type = node.op_token.type
 
 		if res.error: return res
 
-		if node.op_token.type == T_ADD:
+		if op_tok_type == T_ADD:
 			result, error = left.addedTo(right)
-		if node.op_token.type == T_MINUS:
+		if op_tok_type == T_MINUS:
 			result, error = left.minusTo(right)
-		if node.op_token.type == T_MULTIPLIED:
+		if op_tok_type == T_MULTIPLIED:
 			result, error = left.multipliedTo(right)
-		if node.op_token.type == T_DIVIDED:
+		if op_tok_type == T_DIVIDED:
 			result, error = left.dividedTo(right)
 
 		# right is Number object
@@ -446,9 +568,6 @@ class Interpreter:
 
 		if error:
 			return res.failure(error)
-
-		if addToVarsSaved:
-			VARS_SAVED[addToVarsSaved] = result
 
 		return res.success(result.setPos(node.pos_start, node.pos_end))
 
@@ -473,12 +592,9 @@ class Interpreter:
 
 		expr = node.node
 
-		if expr.type == 'numberNode':
-			num = Number(expr.token.value).setPos(node.pos_start, node.pos_end)
-			VARS_SAVED[node.varNode.value] = num
-			return res.success(num)
-		else:
-			return self.visit_binOpNode(expr, addToVarsSaved=node.varNode.value)
+		val = res.register(self.visit(expr))
+		VARS_SAVED[node.varNode.value] = val
+		return res.success(val)
 
 	def visit_varNode(self, node):
 		res = RunTimeResult()
@@ -488,19 +604,53 @@ class Interpreter:
 		else:
 			return res.failure(RunTimeError(node.pos_start, node.pos_end, f'No variable with name {node.node.value} defined'))
 
+	def visit_stringNode(self, node):
+		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end))
+
+	def visit_stringLengthNode(self, node):
+		res = RunTimeResult()
+		string = res.register(self.visit(node.token))
+		if res.error: return res
+
+		result, error = string.lengthOf()
+		if error:
+			return res.failure(error)
+		return res.success(result)
+
+	def visit_stringOpNode(self, node):
+		res = RunTimeResult()
+		left = res.register(self.visit(node.left_node))
+		right = res.register(self.visit(node.right_node))
+		op_tok_type = node.op_token.type
+
+		if res.error: return res
+
+		if op_tok_type == T_JOIN:
+			result, error = left.joinedTo(right)
+		if op_tok_type == T_MULTIPLIED:
+			if isinstance(left, Number):
+				result, error = right.multipliedTo(left)
+			else:
+				result, error = left.multipliedTo(right)
+
+		if error:
+			return res.failure(error)
+
+		return res.success(result.setPos(node.pos_start, node.pos_end))
+
 
 def run(file_name, text):
 	lexer = Lexer(file_name, text)
 	tokens, error = lexer.makeTokens()
 	if error: return None, error
 
-	print(tokens)
+	# print(tokens)
 
 	parser = Parser(tokens)
 	ast = parser.parse()
 	if ast.error: return None, ast.error
 
-	#print(ast.node)
+	# print(ast.node)
 
 	interpreter = Interpreter()
 	result = interpreter.visit(ast.node)

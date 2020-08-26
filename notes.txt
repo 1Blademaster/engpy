@@ -2,13 +2,21 @@
 GRAMMAR
 #################
 
-expr = term ((ADD or MINUS) term) # Least priority
+----- Numbers -----
+
+expr = term ((ADD or MINUS) term)
 
 term = factor ((MULTIPLIED or DIVIDED) factor) 
 
 factor = INT or FLOAT
        = (ADD or MINUS) factor # Positive or negative number
 	   = LPAREN expr RPAREN 
+	   = LENGTH stringExpr
+
+----- Strings -----
+
+stringExpr = stringExpr JOIN stringExpr
+		   = stringExpr MULTIPLIED factor
 
 
 
