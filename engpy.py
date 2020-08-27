@@ -1,5 +1,9 @@
 import string
 
+################
+# CONSTANTS
+################
+
 DIGITS = '0123456789'
 VARCHARS = string.ascii_letters + '_'
 STRINGCHARS = string.printable#.replace('"', '')
@@ -16,14 +20,19 @@ T_DIVIDED = 'DIVIDED'
 T_LPAREN = 'LPAREN'
 T_RPAREN = 'RPAREN'
 
-T_EOF = 'EOF'
-
 T_VAR = 'VAR'
 T_EQUALS = 'EQUALS'
+T_OUTPUT = 'OUTPUT'
 T_LENGTH = 'LENGTH'
 T_JOIN = 'JOIN'
 
+T_EOF = 'EOF'
+
 VARS_SAVED = {}
+
+################
+# ERROR CLASSES
+################
 
 class Error:
 	def __init__(self, pos_start, pos_end, name, details):
@@ -44,7 +53,7 @@ class Error:
 			return arrows
 		else:
 			difference = self.pos_end.col - self.pos_start.col
-			arrows += '^' * (difference)
+			arrows += '^' * (difference - 1)
 			return arrows
 
 
@@ -62,24 +71,9 @@ class RunTimeError(Error):
 	def __init__(self, pos_start, pos_end, details):
 		super().__init__(pos_start, pos_end, 'Runtime error', details)
 
-
-class RunTimeResult:
-	def __init__(self):
-		self.value = None
-		self.error = None
-
-	def register(self, res):
-		if res.error: self.error = res.error
-		return res.value
-
-	def success(self, value):
-		self.value = value
-		return self
-
-	def failure(self, error):
-		self.error = error
-		return self
-
+################
+# BASIC CLASSES
+################
 
 class Token:
 	def __init__(self, type_, value=None, pos_start=None, pos_end=None):
@@ -123,6 +117,9 @@ class Position:
 	def copy(self):
 		return Position(self.idx, self.ln, self.col, self.fn, self.ft)
 
+################
+# LEXER
+################
 
 class Lexer:
 	def __init__(self, file_name, text):
@@ -207,6 +204,7 @@ class Lexer:
 		elif kword == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'LENGTH': return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'JOIN': return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'OUTPUT': return Token(T_OUTPUT, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -228,7 +226,15 @@ class Lexer:
 
 		return Token(T_STRING, value=string, pos_start=pos_start, pos_end=self.pos), None
 
-class numberNode:
+################
+# AST NODE CLASSES
+################
+
+class BasicNode:
+	def __init__(self, output=False):
+		self.output = output
+
+class numberNode(BasicNode):
 	def __init__(self, token):
 		self.type = 'numberNode'
 		self.token = token
@@ -239,7 +245,7 @@ class numberNode:
 		return f'{self.token}'
 
 
-class binOpNode:
+class binOpNode(BasicNode):
 	def __init__(self, left_node, op_token, right_node):
 		self.type = 'binOpNode'
 		self.left_node = left_node
@@ -252,7 +258,7 @@ class binOpNode:
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
 
 
-class unaryOpNode:
+class unaryOpNode(BasicNode):
 	def __init__(self, op_token, node):
 		self.type = 'unaryOpNode'
 		self.op_token = op_token
@@ -264,7 +270,7 @@ class unaryOpNode:
 		return f'({self.op_tok}, {self.node})'
 
 
-class varAssignNode:
+class varAssignNode(BasicNode):
 	def __init__(self, varNode, node):
 		self.type = 'varAssignNode'
 		self.varNode = varNode
@@ -276,7 +282,7 @@ class varAssignNode:
 		return f'({self.varNode}={self.node})'
 
 
-class varNode:
+class varNode(BasicNode):
 	def __init__(self, node):
 		self.type = 'varNode'
 		self.node = node
@@ -287,7 +293,7 @@ class varNode:
 		return f'({self.node})'
 
 
-class stringNode:
+class stringNode(BasicNode):
 	def __init__(self, token):
 		self.type = 'stringNode'
 		self.token = token
@@ -298,7 +304,7 @@ class stringNode:
 		return f'{self.token}'
 
 
-class stringLengthNode:
+class stringLengthNode(BasicNode):
 	def __init__(self, token):
 		self.type = 'stringLengthNode'
 		self.token = token
@@ -309,7 +315,7 @@ class stringLengthNode:
 		return f'Length({self.token})'
 
 	
-class stringOpNode:
+class stringOpNode(BasicNode):
 	def __init__(self, left_node, op_token, right_node):
 		self.type = 'stringOpNode'
 		self.left_node = left_node
@@ -321,11 +327,16 @@ class stringOpNode:
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
 
+################
+# PARSER
+################
+
 class Parser:
 	def __init__(self, tokens):
 		self.tokens = tokens
 		self.tok_idx = -1
 		self.current_tok = ''
+		self.output = False
 		self.advance()
 
 	def advance(self):
@@ -338,13 +349,31 @@ class Parser:
 		if self.tok_idx == 0 and self.tokens[self.tok_idx].type == T_VAR and self.tokens[self.tok_idx + 1].type == T_EQUALS:
 			res = self.varAssign()
 		else:
+			if self.tokens[0].type == T_OUTPUT:
+				self.output = True
+				if self.checkIfEqualsKwordInTokens():
+					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment'))#, None
+				self.advance()
+
 			if self.checkIfStringNotLengthInTokens():
 				res = self.stringOp()
 			else:
 				res = self.expr()
+
 			if not res.error and self.current_tok.type != T_EOF:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Syntax error'))
-		return res
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax'))
+
+		self.outputCopy = self.output
+		self.output = False
+		return res, self.outputCopy
+
+	def checkIfEqualsKwordInTokens(self):
+		equals_found = False
+		for tok in self.tokens[self.tok_idx:]:
+			if tok.type == T_EQUALS:
+				equals_found = True
+
+		return equals_found
 
 	def checkIfStringInTokens(self):
 		string_found = False
@@ -475,6 +504,9 @@ class ParseResult:
 		self.error = error
 		return self
 
+################
+# TYPE CLASSES
+################
 
 class Number:
 	def __init__(self, value):
@@ -533,18 +565,26 @@ class String:
 	def __repr__(self):
 		return f'"{self.value}"'
 
+################
+# INTERPRETER
+################
 
 class Interpreter:
+	def __init__(self, output=False):
+		self.output = output
+
 	def visit(self, node):
 		method_name = f'visit_{type(node).__name__}'
 		method = getattr(self, method_name, self.noVisitMethod)
-		return method(node)
+		result = method(node)
+
+		return result
 		
 	def noVisitMethod(self, node):
 		raise Exception(f'No visit_{type(node).__name__} method defined')
 
 	def visit_numberNode(self, node):
-		return RunTimeResult().success(Number(node.token.value).setPos(node.pos_start, node.pos_end))
+		return RunTimeResult().success(Number(node.token.value).setPos(node.pos_start, node.pos_end)), self.output
 
 	def visit_binOpNode(self, node, addToVarsSaved=False):
 		res = RunTimeResult()
@@ -569,7 +609,7 @@ class Interpreter:
 		if error:
 			return res.failure(error)
 
-		return res.success(result.setPos(node.pos_start, node.pos_end))
+		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 
 	def visit_unaryOpNode(self, node):
 		res = RunTimeResult()
@@ -583,7 +623,7 @@ class Interpreter:
 		if error:
 			return res.failure(error)
 
-		return res.success(number.setPos(node.pos_start, node.pos_end))
+		return res.success(number.setPos(node.pos_start, node.pos_end)), self.output
 
 	def visit_varAssignNode(self, node):
 		res = RunTimeResult()
@@ -594,18 +634,18 @@ class Interpreter:
 
 		val = res.register(self.visit(expr))
 		VARS_SAVED[node.varNode.value] = val
-		return res.success(val)
+		return res.success(val), self.output
 
 	def visit_varNode(self, node):
 		res = RunTimeResult()
 		if node.node.value in VARS_SAVED:
 			result = VARS_SAVED[node.node.value]
-			return res.success(result.setPos(node.pos_start, node.pos_end))
+			return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 		else:
 			return res.failure(RunTimeError(node.pos_start, node.pos_end, f'No variable with name {node.node.value} defined'))
 
 	def visit_stringNode(self, node):
-		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end))
+		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end)), self.output
 
 	def visit_stringLengthNode(self, node):
 		res = RunTimeResult()
@@ -615,7 +655,7 @@ class Interpreter:
 		result, error = string.lengthOf()
 		if error:
 			return res.failure(error)
-		return res.success(result)
+		return res.success(result), self.output
 
 	def visit_stringOpNode(self, node):
 		res = RunTimeResult()
@@ -636,23 +676,70 @@ class Interpreter:
 		if error:
 			return res.failure(error)
 
-		return res.success(result.setPos(node.pos_start, node.pos_end))
+		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 
 
-def run(file_name, text):
-	lexer = Lexer(file_name, text)
-	tokens, error = lexer.makeTokens()
-	if error: return None, error
+class RunTimeResult:
+	def __init__(self):
+		self.value = None
+		self.error = None
 
-	# print(tokens)
+	def register(self, res):
+		if type(res) == tuple:
+			if res[0].error: self.error = res[0].error
+			return res[0].value
+		if res.error: self.error = res.error
+		return res.value
 
-	parser = Parser(tokens)
-	ast = parser.parse()
-	if ast.error: return None, ast.error
+	def success(self, value):
+		self.value = value
+		return self
 
-	# print(ast.node)
+	def failure(self, error):
+		self.error = error
+		return self
 
-	interpreter = Interpreter()
-	result = interpreter.visit(ast.node)
+################
+# FUNCTIONS
+################
 
-	return result.value, result.error
+def run(file_name, text, debug=False):
+	try:
+		lexer = Lexer(file_name, text)
+		tokens, error = lexer.makeTokens()
+		if error: return None, error
+	except Exception as e:
+		print('------------------------')
+		print('AN ERROR OCCURED WHILE LEXING:')
+		print(e)
+
+	if debug:
+		print('TOKENS:')
+		print(tokens)
+
+	try:
+		parser = Parser(tokens)
+		ast, output = parser.parse()
+		if ast.error: return None, ast.error
+	except Exception as e:
+		print('------------------------')
+		print('AN ERROR OCCURED WHILE PARSING:')
+		print(e)
+
+	if debug:
+		print('AST:')
+		print(ast.node)
+
+	try:
+		interpreter = Interpreter(output)
+		result, output = interpreter.visit(ast.node)
+	except Exception as e:
+		print('------------------------')
+		print('AN ERROR OCCURED WHILE INTERPRETING:')
+		print(e)
+
+	if output or debug:
+		print('RESULT:')
+		return result.value, result.error
+	else:
+		return None, result.error
