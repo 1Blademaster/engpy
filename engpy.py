@@ -19,6 +19,12 @@ T_DIVIDED = 'DIVIDED'
 
 T_LPAREN = 'LPAREN'
 T_RPAREN = 'RPAREN'
+T_LESSTHAN = 'LESSTHAN'
+T_MORETHAN = 'MORETHAN'
+T_LESSEQUALS = 'LESSEQUALS'
+T_MOREEQUALS = 'MOREEQUALS'
+T_SAMEAS = 'SAMEAS'
+T_NOTSAMEAS = 'NOTSAMEAS'
 
 T_VAR = 'VAR'
 T_EQUALS = 'EQUALS'
@@ -205,6 +211,12 @@ class Lexer:
 		elif kword == 'LENGTH': return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'JOIN': return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'OUTPUT': return Token(T_OUTPUT, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'LESSTHAN': return Token(T_LESSTHAN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'MORETHAN': return Token(T_MORETHAN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'LESSEQUALS': return Token(T_LESSEQUALS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'MOREEQUALS': return Token(T_MOREEQUALS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'SAMEAS': return Token(T_SAMEAS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'NOTSAMEAS': return Token(T_NOTSAMEAS, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -327,6 +339,18 @@ class stringOpNode(BasicNode):
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
 
+class equalityNode(BasicNode):
+	def __init__(self, left_node, op_token, right_node):
+		self.type = 'equalityNode'
+		self.left_node = left_node
+		self.op_token = op_token
+		self.right_node = right_node
+		self.pos_start = left_node.pos_start
+		self.pos_end = right_node.pos_end
+
+	def __repr__(self):
+		return f'({self.left_node}, {self.op_token}, {self.right_node})'
+
 ################
 # PARSER
 ################
@@ -352,16 +376,18 @@ class Parser:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
 				if self.checkIfEqualsKwordInTokens():
-					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment'))#, None
+					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment')), None
 				self.advance()
 
-			if self.checkIfStringNotLengthInTokens():
+			if self.checkIfEqualityInTokens():
+				res = self.equalityOp()
+			elif self.checkIfStringNotLengthInTokens():
 				res = self.stringOp()
 			else:
 				res = self.expr()
 
 			if not res.error and self.current_tok.type != T_EOF:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax'))
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax')), None
 
 		self.outputCopy = self.output
 		self.output = False
@@ -396,6 +422,14 @@ class Parser:
 				return False
 		return True
 
+	def checkIfEqualityInTokens(self):
+		equality_found = False
+		for tok in self.tokens[self.tok_idx:]:
+			if tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
+				equality_found = True
+
+		return equality_found
+
 	def factor(self):
 		res = ParseResult()
 		tok = self.current_tok
@@ -425,6 +459,7 @@ class Parser:
 			else:
 				expr = res.register(self.expr())
 			if res.error: return res
+			
 			if self.current_tok.type == T_RPAREN:
 				res.register(self.advance())
 				return res.success(expr)
@@ -437,6 +472,8 @@ class Parser:
 		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
 
 	def expr(self):
+		if self.checkIfEqualityInTokens():
+			return self.equalityOp()
 		return self.binOp(self.term, [T_ADD, T_MINUS])
 
 	def varAssign(self):
@@ -482,6 +519,20 @@ class Parser:
 			if res.error: return res
 
 			left = stringOpNode(left, op_tok, right)
+		return res.success(left)
+
+	def equalityOp(self):
+		res = ParseResult()
+		left = res.register(self.factor())
+		if res.error: return res
+
+		while self.current_tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
+			op_tok = self.current_tok
+			res.register(self.advance())
+			right = res.register(self.factor())
+			if res.error: return res
+
+			left = equalityNode(left, op_tok, right)
 		return res.success(left)
 
 
@@ -565,6 +616,60 @@ class String:
 	def __repr__(self):
 		return f'"{self.value}"'
 
+
+class Boolean:
+	def __init__(self, value):
+		self.value = bool(value)
+		self.setPos()
+
+	def setPos(self, pos_start=None, pos_end=None):
+		self.pos_start = pos_start
+		self.pos_end = pos_end
+		return self
+
+	def __repr__(self):
+		return f'{self.value}'
+
+
+class Comparision:
+	def __init__(self, left_node, op_token, right_node):
+		self.left = left_node
+		self.op_tok = op_token
+		self.right = right_node
+
+	def checkNodeCompatibility(self):
+		if type(self.left) != type(self.right):
+			return False
+		else:
+			return True
+
+	def compare(self):
+		op = self.op_tok.type
+		left = self.left.value
+		right = self.right.value
+
+		if not self.checkNodeCompatibility():
+			return None, RunTimeError(self.left.pos_start, self.right.pos_end, f'Cannot compare {type(self.left).__name__} and {type(self.right).__name__}')
+
+		if type(left) == str and type(right) == str:
+			left = len(left)
+			right = len(right)
+		
+		if op == T_LESSTHAN:
+			return Boolean(left < right), None
+		elif op == T_MORETHAN:
+			return Boolean(left > right), None
+		elif op == T_LESSEQUALS:
+			return Boolean(left <= right), None
+		elif op == T_MOREEQUALS:
+			return Boolean(left >= right), None
+		elif op == T_SAMEAS:
+			return Boolean(self.left.value == self.right.value), None
+		elif op == T_NOTSAMEAS:
+			return Boolean(self.left.value != self.right.value), None
+		else:
+			return None, RunTimeError(self.op_tok.pos_start, self.op_tok.pos_end, 'Unknown comparision operator')
+
 ################
 # INTERPRETER
 ################
@@ -594,6 +699,9 @@ class Interpreter:
 
 		if res.error: return res
 
+		if type(left) == Boolean or type(right) == Boolean:
+			return res.failure(RunTimeError(node.pos_start, node.pos_end, 'Cannot perform binary operations on Boolean values')), None
+
 		if op_tok_type == T_ADD:
 			result, error = left.addedTo(right)
 		if op_tok_type == T_MINUS:
@@ -607,7 +715,7 @@ class Interpreter:
 		# result is Number object
 
 		if error:
-			return res.failure(error)
+			return res.failure(error), None
 
 		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 
@@ -621,7 +729,7 @@ class Interpreter:
 			number, error = number.multipliedTo(Number(-1))
 
 		if error:
-			return res.failure(error)
+			return res.failure(error), None
 
 		return res.success(number.setPos(node.pos_start, node.pos_end)), self.output
 
@@ -642,7 +750,7 @@ class Interpreter:
 			result = VARS_SAVED[node.node.value]
 			return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 		else:
-			return res.failure(RunTimeError(node.pos_start, node.pos_end, f'No variable with name {node.node.value} defined'))
+			return res.failure(RunTimeError(node.pos_start, node.pos_end, f'No variable with name {node.node.value} defined')), None
 
 	def visit_stringNode(self, node):
 		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end)), self.output
@@ -654,7 +762,7 @@ class Interpreter:
 
 		result, error = string.lengthOf()
 		if error:
-			return res.failure(error)
+			return res.failure(error), None
 		return res.success(result), self.output
 
 	def visit_stringOpNode(self, node):
@@ -674,10 +782,25 @@ class Interpreter:
 				result, error = left.multipliedTo(right)
 
 		if error:
-			return res.failure(error)
+			return res.failure(error), None
 
 		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 
+	def visit_equalityNode(self, node):
+		res = RunTimeResult()
+		left = res.register(self.visit(node.left_node))
+		right = res.register(self.visit(node.right_node))
+		op_tok = node.op_token
+		
+		if res.error: return res
+		
+		comp = Comparision(left, op_tok, right)
+		result, error = comp.compare()
+
+		if error:
+			return res.failure(error), None
+
+		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
 
 class RunTimeResult:
 	def __init__(self):
@@ -704,42 +827,43 @@ class RunTimeResult:
 ################
 
 def run(file_name, text, debug=False):
-	try:
-		lexer = Lexer(file_name, text)
-		tokens, error = lexer.makeTokens()
-		if error: return None, error
-	except Exception as e:
-		print('------------------------')
-		print('AN ERROR OCCURED WHILE LEXING:')
-		print(e)
+	# try:
+	lexer = Lexer(file_name, text)
+	tokens, error = lexer.makeTokens()
+	if error: return None, error
+	# except Exception as e:
+	# 	print('------------------------')
+	# 	print('AN ERROR OCCURED WHILE LEXING:')
+	# 	return None, e
 
 	if debug:
 		print('TOKENS:')
-		print(tokens)
+		print(tokens, '\n')
 
-	try:
-		parser = Parser(tokens)
-		ast, output = parser.parse()
-		if ast.error: return None, ast.error
-	except Exception as e:
-		print('------------------------')
-		print('AN ERROR OCCURED WHILE PARSING:')
-		print(e)
+	# try:
+	parser = Parser(tokens)
+	ast, output = parser.parse()
+	if ast.error: return None, ast.error
+	# except Exception as e:
+	# 	print('------------------------')
+	# 	print('AN ERROR OCCURED WHILE PARSING:')
+	# 	return None, e
 
 	if debug:
 		print('AST:')
-		print(ast.node)
+		print(ast.node, '\n')
 
-	try:
-		interpreter = Interpreter(output)
-		result, output = interpreter.visit(ast.node)
-	except Exception as e:
-		print('------------------------')
-		print('AN ERROR OCCURED WHILE INTERPRETING:')
-		print(e)
+	# try:
+	interpreter = Interpreter(output)
+	result, output = interpreter.visit(ast.node)
+	# except Exception as e:
+	# 	print('------------------------')
+	# 	print('AN ERROR OCCURED WHILE INTERPRETING:')
+	# 	return None, e
 
 	if output or debug:
-		print('RESULT:')
+		if debug:
+			print('RESULT:')
 		return result.value, result.error
 	else:
 		return None, result.error
