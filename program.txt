@@ -1,0 +1,4 @@
+x EQUALS 5
+y EQUALS 10
+z EQUALS "Hello World!"
+OUTPUT (LENGTH z) ADD (y MULTIPLIED x)

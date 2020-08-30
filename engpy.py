@@ -6,7 +6,7 @@ import string
 
 DIGITS = '0123456789'
 VARCHARS = string.ascii_letters + '_'
-STRINGCHARS = string.printable#.replace('"', '')
+STRINGCHARS = string.printable + '£'
 
 T_INT = 'INT'
 T_FLOAT = 'FLOAT'
@@ -47,8 +47,9 @@ class Error:
 		self.name = name
 		self.details = details
 
-	def asString(self):
-		result = f'''{self.showArrows()}\n{self.name}: {self.details}\nFile {self.pos_start.fn}, line {self.pos_start.ln + 1}'''
+	def asString(self, noArrows=False):
+		if noArrows: result = f'''{self.name}: {self.details}\nFile {self.pos_start.fn}, line {self.pos_start.ln + 1}'''
+		else: result = f'''{self.showArrows()}\n{self.name}: {self.details}\nFile {self.pos_start.fn}, line {self.pos_start.ln + 1}'''
 		return result
 
 	def showArrows(self):
@@ -130,9 +131,10 @@ class Position:
 class Lexer:
 	def __init__(self, file_name, text):
 		self.fn = file_name
-		self.text = text
+		self.text = text + '\n'
 		self.pos = Position(-1, 0, -1, self.fn, text)
 		self.current_char = None
+		self.total_tokens = []
 		self.advance()
 
 	def advance(self):
@@ -143,6 +145,11 @@ class Lexer:
 		tokens = []
 		while self.current_char != None:
 			if self.current_char in ' \t':
+				self.advance()
+			elif self.current_char in '\n':
+				if tokens:
+					self.total_tokens.append(tokens)
+				tokens = [] 
 				self.advance()
 			elif self.current_char == '"':
 				pos_start = self.pos.copy()
@@ -155,18 +162,6 @@ class Lexer:
 				tokens.append(self.makeNumber())
 			elif self.current_char in VARCHARS:
 				tokens.append(self.makeKeywordToken())
-			# elif self.current_char == '+':
-			# 	tokens.append(Token(T_ADD, pos_start=self.pos))
-			# 	self.advance()
-			# elif self.current_char == '-':
-			# 	tokens.append(Token(T_MINUS, pos_start=self.pos))
-			# 	self.advance()
-			# elif self.current_char == '*':
-			# 	tokens.append(Token(T_MULTIPLIED, pos_start=self.pos))
-			# 	self.advance()
-			# elif self.current_char == '/':
-			# 	tokens.append(Token(T_DIVIDED, pos_start=self.pos))
-			# 	self.advance()
 			elif self.current_char == '(':
 				tokens.append(Token(T_LPAREN, pos_start=self.pos))
 				self.advance()
@@ -179,8 +174,11 @@ class Lexer:
 				self.advance()
 				return [], IllegalCharError(pos_start, self.pos, "'" + char + "'")
 
-		tokens.append(Token(T_EOF, pos_start=self.pos))
-		return tokens, None
+		if self.total_tokens:
+			self.total_tokens[-1].append(Token(T_EOF, pos_start=self.pos))
+			return self.total_tokens, None
+		else:
+			return [], RunTimeError(self.pos, self.pos, 'No text found')
 
 	def makeNumber(self):
 		num = ''
@@ -697,7 +695,7 @@ class Interpreter:
 		right = res.register(self.visit(node.right_node))
 		op_tok_type = node.op_token.type
 
-		if res.error: return res
+		if res.error: return res, None
 
 		if type(left) == Boolean or type(right) == Boolean:
 			return res.failure(RunTimeError(node.pos_start, node.pos_end, 'Cannot perform binary operations on Boolean values')), None
@@ -722,7 +720,7 @@ class Interpreter:
 	def visit_unaryOpNode(self, node):
 		res = RunTimeResult()
 		number = res.register(self.visit(node.node))
-		if res.error: return res
+		if res.error: return res, None
 
 		error = None
 		if node.op_token.type == T_MINUS:
@@ -736,7 +734,7 @@ class Interpreter:
 	def visit_varAssignNode(self, node):
 		res = RunTimeResult()
 		number = res.register(self.visit(node.node))
-		if res.error: return res
+		if res.error: return res, None
 
 		expr = node.node
 
@@ -758,7 +756,7 @@ class Interpreter:
 	def visit_stringLengthNode(self, node):
 		res = RunTimeResult()
 		string = res.register(self.visit(node.token))
-		if res.error: return res
+		if res.error: return res, None
 
 		result, error = string.lengthOf()
 		if error:
@@ -771,7 +769,7 @@ class Interpreter:
 		right = res.register(self.visit(node.right_node))
 		op_tok_type = node.op_token.type
 
-		if res.error: return res
+		if res.error: return res, None
 
 		if op_tok_type == T_JOIN:
 			result, error = left.joinedTo(right)
@@ -792,7 +790,7 @@ class Interpreter:
 		right = res.register(self.visit(node.right_node))
 		op_tok = node.op_token
 		
-		if res.error: return res
+		if res.error: return res, None
 		
 		comp = Comparision(left, op_tok, right)
 		result, error = comp.compare()
@@ -827,39 +825,27 @@ class RunTimeResult:
 ################
 
 def run(file_name, text, debug=False):
-	# try:
 	lexer = Lexer(file_name, text)
 	tokens, error = lexer.makeTokens()
 	if error: return None, error
-	# except Exception as e:
-	# 	print('------------------------')
-	# 	print('AN ERROR OCCURED WHILE LEXING:')
-	# 	return None, e
 
 	if debug:
 		print('TOKENS:')
 		print(tokens, '\n')
 
-	# try:
-	parser = Parser(tokens)
-	ast, output = parser.parse()
-	if ast.error: return None, ast.error
-	# except Exception as e:
-	# 	print('------------------------')
-	# 	print('AN ERROR OCCURED WHILE PARSING:')
-	# 	return None, e
+	
+	for tok in tokens:
+		parser = Parser(tok)
+		ast, output = parser.parse()
+		if ast.error: print(ast.error.pos_start.col);return None, ast.error
 
-	if debug:
-		print('AST:')
-		print(ast.node, '\n')
+		if debug:
+			print('AST:')
+			print(ast.node, '\n')
 
-	# try:
-	interpreter = Interpreter(output)
-	result, output = interpreter.visit(ast.node)
-	# except Exception as e:
-	# 	print('------------------------')
-	# 	print('AN ERROR OCCURED WHILE INTERPRETING:')
-	# 	return None, e
+		interpreter = Interpreter(output)
+		result, output = interpreter.visit(ast.node)
+		#print(result.value, result.error)
 
 	if output or debug:
 		if debug:

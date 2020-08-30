@@ -35,16 +35,19 @@ Token: A single element of a programing language (e.g. data value, keyword or pu
 CLASSES
 #################
 
+# ERROR CLASSES
+
 Error - pos_start, pos_end, name, details:
-This class shows the type of error as well as which line it is on, and a description can be added.
+This class shows the type of error as well as which line it is on, and a description can be added. The showArrows method
+allows arrows to be shown from the start position to the end position of a particular token or error, this is useful in
+identifying where the error came from.
 
 IllegalCharError - 
 InvalidSyntaxError - 
 RunTimeError - pos_start, pos_end, details:
 These are child classes of the main Error class and show the type of error it is, deduced by the name.
 
-RunTimeResult - :
-
+# BASIC CLASSES
 
 Token - type_, value, pos_start, pos_end:
 This class is to instantiate the token into an object which can be acted upon.
@@ -53,6 +56,8 @@ Position - index, line_number, column, file_name, file_text:
 This class helps keep position of the different tokens in the token stream, this can help identify errors
 as well as move onto the next token when interpreting the code. This class also keeps data such as line number
 and column number of a token.
+
+# LEXER
 
 Lexer - file_name, text:
 This is the main class which takes text and converts it into a list of tokens which can then be parsed and interpreted
@@ -66,16 +71,46 @@ the consecutive characters and added them together to create one of the keywords
 operation Token is returned, otherwise an error is returned. The makeTokens method will return an IllegalCharError object
 if there is a character which does not come under any declared characters of the language.
 
+# AST NODE CLASSES
+
+BasicNode - :
+This class is used as the parent class for all AST nodes and it contains the self.output attribute which determines if the 
+value which is equal to the type of node and it's expression should be outputted or not.
+
 numberNode - token:
 This class is used to represent a number on an AST, it holds the Token object for the number.
 
 binOpNode - left_node, op_token, right_node:
-This class is the node used for a binary operation in an AST. The left_node is the node on the left hand side of the operator,
+This class is the node used for a binary operation on an AST. The left_node is the node on the left hand side of the operator,
 right_node is the node on the right.
 
 unaryOpNode - op_token, node:
 This class is used to check to see if there is an operator token before a node object. This is used to store values such as 
 negative numbers and expressions.
+
+varAssignNode - varNode, node:
+This class is the node used to represent variable assignment, the variable node is the first argument and the second is the node
+which will be assigned to the variable
+
+varNode - node:
+This class is used to represent a variable on an AST, it holds the Token object for the variable.
+
+stringNode - token:
+This is the class used to represent a string on an ASt, it holds the Token object for the string.
+
+stringLengthNode - token:
+This node is used to represent the function to find the length of a string on an AST.
+
+stringOpNode - left_node, op_token, right_node:
+This class is used for the string operations on an AST. The left_node is the node on the left side of the op_token and the right_node
+is on the right hand side.
+
+equalityNode - left_node, op_token, right_node:
+This class is used for the equality comparisions on an AST. The left_node is the node on the left side of the op_token and the right_node
+is on the right hand side.
+
+
+# PARSER
 
 Parser - tokens:
 This class takes the list of tokens fetched from the lexer and then parses them to create an AST, which can then be interpreted.
@@ -86,9 +121,16 @@ return of the right expression, this checks if there is a '+' or '-' infront of 
 and if there are any parantheses in the expression, if there are, then it recursively calls in expr method inside the parantheses
 to get the binOpNode for the value inside. The parse method will also return an InvalidSyntaxError object indicating a missing 
 binary operator. The factor method will also return InvalidSyntaxError objects if there is a missing
-parenthesis or number.
+parenthesis or number. The parser has methods to check if certain tokens are in the token stream, and can do certain operations
+based on that information, for example if there is a String token but no Length token, then the parser will use the stringOp method
+to do an operation on a string, but if there is a Length token as well as a String token, then it will carry out the expr method as
+the Length of a String returns a number, hence we can do arithmitcal operations using it. This is the same with equality tokens, if
+the token stream has an equality token then the parser will set the precedence for equality at the top and will then check for other 
+equality tokens, if none are found then it will find the expressions involved in the equality comparision.
 
 ParseResult - :
+
+# TYPE CLASSES
 
 Number - value:
 This class is responsible for returning the answer to a binary operation on two numbers. This class has different methods for
@@ -96,21 +138,45 @@ addition, subtraction, multiplication and division which are called in the Inter
 where it's value is set to the answer of the binary operation. It will also output a RunTimeError object with the detail of 
 'Division by zero' if that was attempted by the user.
 
+String - value:
+This class is used to return a String object where a string has to be outputted or used in an expression elsewhere. It has 3 main 
+methods, one is for concatenating the String to other Strings, one is for multiplying the String by an integer which produces 
+a String where the value is copied multiple times, and the last is for getting the length of the String and this will return a
+Number object so it can be used in numerical calculations.
+
+Boolean - value:
+This class is used to return a Boolean object for when an equality comparision is made.
+
+Comparision - left_node, op_token, right_node:
+This class is used to represent an equality comparision being made using the 3 nodes. It can check if the comparision is even
+possible or not; if the two different nodes have different type values then they are not compatible with each other. This class
+also has a compare method which returns a Boolean object according to the comparision being made. You can also compare Strings
+with other Strings and it will compare the length of them as integers.
+
+# INTERPRETER
+
 Interpreter - node:
 This class is used to traverse the AST and return the end value for the expression which was inputted by the user. It achieves
 this by going to the different nodes in the tree and figuring out which binary operation to do on the left and right node of the
 operator. There are different methods for visiting the different types of nodes. The visit_numberNode method just returns the number
 and has no error checks because a plain number can have no errors. The visit_binOpNode checks the binary operator and exectures the
 correct method in the Number class to calculate the answer to the operation. The visit_unaryOpNode checks if there is a '-' token 
-infront of the number token and then multiplies the number by -1 to make it negative.
+infront of the number token and then multiplies the number by -1 to make it negative. When assigning values to variables, the
+interpreter will add a key-value pair to the VARS_SAVED dictionary constant where the key is the name of the variable and the value
+is the value which would be assigned to the variable. The value for a particular variable is also retrievable from the VARS_SAVED
+dictionary and will return the object of the value saved, for example if a string was saved then it would return a String object, these
+can then be used in further expressions. 
 
-
+RunTimeResult - :
 
 #################
 FUNCTIONS
 #################
 
-run - file_name, text:
+run - file_name, text, debug=False:
 This function is used to run the program, it creates an instance of a Lexer class and then gets the tokens from the lexer which are then
 used in an instance of the Parser class to create an AST which is then traversed by an instance of the Interpreter class which then
-returns the correct output for the expression. If there are any errors during this process then they will be outputted as well.
+returns the correct output for the expression. If there are any errors during this process then they will be outputted as well. If there
+is a OUTPUT keyword at the start of a line, then that lines value will be outputted, otherwise nothing will be outputted to the terminal. 
+There is a debug option, which is set to false as default, which can output extra data such as the token stream, the ast nodes as well as
+the result to operations even if there is no OUTPUT keyword specified. 
