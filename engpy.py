@@ -148,6 +148,7 @@ class Lexer:
 				self.advance()
 			elif self.current_char in '\n':
 				if tokens:
+					tokens.append(Token(T_EOF, pos_start=self.pos))
 					self.total_tokens.append(tokens)
 				tokens = [] 
 				self.advance()
@@ -162,6 +163,9 @@ class Lexer:
 				tokens.append(self.makeNumber())
 			elif self.current_char in VARCHARS:
 				tokens.append(self.makeKeywordToken())
+			elif self.current_char == '-':
+				tokens.append(Token(T_MINUS, pos_start=self.pos))
+				self.advance()
 			elif self.current_char == '(':
 				tokens.append(Token(T_LPAREN, pos_start=self.pos))
 				self.advance()
@@ -241,8 +245,7 @@ class Lexer:
 ################
 
 class BasicNode:
-	def __init__(self, output=False):
-		self.output = output
+	output = False
 
 class numberNode(BasicNode):
 	def __init__(self, token):
@@ -374,9 +377,9 @@ class Parser:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
 				if self.checkIfEqualsKwordInTokens():
-					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment')), None
+					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment'))
 				self.advance()
-
+			
 			if self.checkIfEqualityInTokens():
 				res = self.equalityOp()
 			elif self.checkIfStringNotLengthInTokens():
@@ -385,11 +388,11 @@ class Parser:
 				res = self.expr()
 
 			if not res.error and self.current_tok.type != T_EOF:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax')), None
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax'))
 
 		self.outputCopy = self.output
 		self.output = False
-		return res, self.outputCopy
+		return res
 
 	def checkIfEqualsKwordInTokens(self):
 		equals_found = False
@@ -433,23 +436,35 @@ class Parser:
 		tok = self.current_tok
 		if tok.type == T_VAR:
 			res.register(self.advance())
-			return res.success(varNode(tok))
+			n = varNode(tok)
+			n.output = self.output
+			return res.success(n)
 		elif tok.type == T_STRING:
 			res.register(self.advance())
-			return res.success(stringNode(tok))
+			n = stringNode(tok)
+			n.output = self.output
+			return res.success(n)
 		elif tok.type == T_LENGTH:
 			res.register(self.advance())
 			string = res.register(self.stringOp())
 			if res.error: return res
-			return res.success(stringLengthNode(string))
+
+			n = stringLengthNode(string)
+			n.output = self.output
+			return res.success(n)
 		elif tok.type in [T_ADD, T_MINUS]:
 			res.register(self.advance())
 			factor = res.register(self.factor())
 			if res.error: return res
-			return res.success(unaryOpNode(tok, factor))
+
+			n = unaryOpNode(tok, factor)
+			n.output = self.output
+			return res.success(n)
 		elif tok.type in [T_INT, T_FLOAT]:
 			res.register(self.advance())
-			return res.success(numberNode(tok))
+			n = numberNode(tok)
+			n.output = self.output
+			return res.success(n)
 		elif tok.type == T_LPAREN:
 			res.register(self.advance())
 			if self.checkIfStringInTokens():
@@ -464,7 +479,7 @@ class Parser:
 			else:
 				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')'"))
 
-		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Invalid syntax'))
+		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Invalid syntax in expression'))
 
 	def term(self):
 		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
@@ -503,6 +518,8 @@ class Parser:
 			if res.error: return res
 
 			left = binOpNode(left, op_tok, right)
+		
+		left.output = self.output
 		return res.success(left)
 
 	def stringOp(self):
@@ -517,6 +534,8 @@ class Parser:
 			if res.error: return res
 
 			left = stringOpNode(left, op_tok, right)
+
+		left.output = self.output
 		return res.success(left)
 
 	def equalityOp(self):
@@ -531,6 +550,8 @@ class Parser:
 			if res.error: return res
 
 			left = equalityNode(left, op_tok, right)
+
+		left.output = self.output
 		return res.success(left)
 
 
@@ -612,7 +633,7 @@ class String:
 		return Number(len(self.value)), None
 
 	def __repr__(self):
-		return f'"{self.value}"'
+		return f'{self.value}'
 
 
 class Boolean:
@@ -673,8 +694,8 @@ class Comparision:
 ################
 
 class Interpreter:
-	def __init__(self, output=False):
-		self.output = output
+	def __init__(self):
+		pass
 
 	def visit(self, node):
 		method_name = f'visit_{type(node).__name__}'
@@ -687,7 +708,7 @@ class Interpreter:
 		raise Exception(f'No visit_{type(node).__name__} method defined')
 
 	def visit_numberNode(self, node):
-		return RunTimeResult().success(Number(node.token.value).setPos(node.pos_start, node.pos_end)), self.output
+		return RunTimeResult().success(Number(node.token.value).setPos(node.pos_start, node.pos_end)), node.output
 
 	def visit_binOpNode(self, node, addToVarsSaved=False):
 		res = RunTimeResult()
@@ -715,7 +736,7 @@ class Interpreter:
 		if error:
 			return res.failure(error), None
 
-		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
+		return res.success(result.setPos(node.pos_start, node.pos_end)), node.output
 
 	def visit_unaryOpNode(self, node):
 		res = RunTimeResult()
@@ -729,7 +750,7 @@ class Interpreter:
 		if error:
 			return res.failure(error), None
 
-		return res.success(number.setPos(node.pos_start, node.pos_end)), self.output
+		return res.success(number.setPos(node.pos_start, node.pos_end)), node.output
 
 	def visit_varAssignNode(self, node):
 		res = RunTimeResult()
@@ -740,18 +761,18 @@ class Interpreter:
 
 		val = res.register(self.visit(expr))
 		VARS_SAVED[node.varNode.value] = val
-		return res.success(val), self.output
+		return res.success(val), node.output
 
 	def visit_varNode(self, node):
 		res = RunTimeResult()
 		if node.node.value in VARS_SAVED:
 			result = VARS_SAVED[node.node.value]
-			return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
+			return res.success(result.setPos(node.pos_start, node.pos_end)), node.output
 		else:
 			return res.failure(RunTimeError(node.pos_start, node.pos_end, f'No variable with name {node.node.value} defined')), None
 
 	def visit_stringNode(self, node):
-		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end)), self.output
+		return RunTimeResult().success(String(node.token.value).setPos(node.pos_start, node.pos_end)), node.output
 
 	def visit_stringLengthNode(self, node):
 		res = RunTimeResult()
@@ -761,7 +782,7 @@ class Interpreter:
 		result, error = string.lengthOf()
 		if error:
 			return res.failure(error), None
-		return res.success(result), self.output
+		return res.success(result), node.output
 
 	def visit_stringOpNode(self, node):
 		res = RunTimeResult()
@@ -782,7 +803,7 @@ class Interpreter:
 		if error:
 			return res.failure(error), None
 
-		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
+		return res.success(result.setPos(node.pos_start, node.pos_end)), node.output
 
 	def visit_equalityNode(self, node):
 		res = RunTimeResult()
@@ -798,7 +819,7 @@ class Interpreter:
 		if error:
 			return res.failure(error), None
 
-		return res.success(result.setPos(node.pos_start, node.pos_end)), self.output
+		return res.success(result.setPos(node.pos_start, node.pos_end)), node.output
 
 class RunTimeResult:
 	def __init__(self):
@@ -836,20 +857,32 @@ def run(file_name, text, debug=False):
 	
 	for tok in tokens:
 		parser = Parser(tok)
-		ast, output = parser.parse()
-		if ast.error: print(ast.error.pos_start.col);return None, ast.error
+		ast = parser.parse()
+		if ast.error: return None, ast.error
 
 		if debug:
-			print('AST:')
-			print(ast.node, '\n')
+			print('\nAST:')
+			print(ast.node)
 
-		interpreter = Interpreter(output)
+		interpreter = Interpreter()
 		result, output = interpreter.visit(ast.node)
 		#print(result.value, result.error)
 
-	if output or debug:
-		if debug:
-			print('RESULT:')
-		return result.value, result.error
-	else:
-		return None, result.error
+		res = result.value
+		error = result.error
+
+		if error:
+			if isinstance(error, Error):
+				if file_name != '<shell>':
+					print(error.asString(noArrows=True))
+				else:
+					print(error.asString())
+			else:
+				print(error)
+			return None, None
+		else:
+			if output:
+				if res is not None:
+					print(res)
+	
+	return None, None

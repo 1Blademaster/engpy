@@ -19,7 +19,7 @@ def runFromShell(debug=False):
 				print(result)
  
 def runFromFile(file_name, debug=False):
-	result, error = run(file_name, open(file_name, 'r').read(), debug=debug)
+	result, error = run(file_name, open(file_name, 'r').read().strip(), debug=debug)
 	if error:
 		if isinstance(error, Error):
 			print(error.asString(noArrows=True))
@@ -31,7 +31,6 @@ def runFromFile(file_name, debug=False):
 
 
 if __name__ == '__main__':
-	print(sys.argv)
 	if len(sys.argv) > 1:
 		if sys.argv[1] == 'shell':
 			if len(sys.argv) > 2:
