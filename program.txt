@@ -3,5 +3,7 @@ y EQUALS 10
 z EQUALS "Hello World!"
 OUTPUT 5 ADD 5
 OUTPUT (LENGTH z) ADD (y MULTIPLIED x)
-OUTPUT "hello"
+OUTPUT "hello
+s
+"
 OUTPUT -5

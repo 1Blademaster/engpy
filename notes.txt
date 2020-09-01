@@ -18,6 +18,11 @@ factor = INT or FLOAT
 stringExpr = stringExpr JOIN stringExpr
 		   = stringExpr MULTIPLIED factor
 
+----- Comparision -----
+
+comparision = expr comparisionOperator expr
+			= stringExpr comparisionOperator stringExpr
+
 
 
 #################

@@ -19,6 +19,8 @@ T_DIVIDED = 'DIVIDED'
 
 T_LPAREN = 'LPAREN'
 T_RPAREN = 'RPAREN'
+T_LSBRACK = 'LSBRACK'
+T_RSBRACK = 'RSBRACK'
 T_LESSTHAN = 'LESSTHAN'
 T_MORETHAN = 'MORETHAN'
 T_LESSEQUALS = 'LESSEQUALS'
@@ -31,6 +33,9 @@ T_EQUALS = 'EQUALS'
 T_OUTPUT = 'OUTPUT'
 T_LENGTH = 'LENGTH'
 T_JOIN = 'JOIN'
+T_IF = 'IF'
+T_ELSEIF = 'ELSEIF'
+T_ELSE = 'ELSE'
 
 T_EOF = 'EOF'
 
@@ -124,15 +129,21 @@ class Position:
 	def copy(self):
 		return Position(self.idx, self.ln, self.col, self.fn, self.ft)
 
+	def __repr__(self):
+		return f'idx:{self.idx}, ln:{self.ln}, col:{self.col}'
+
 ################
 # LEXER
 ################
 
 class Lexer:
-	def __init__(self, file_name, text):
+	def __init__(self, file_name, text, pos=None):
 		self.fn = file_name
 		self.text = text + '\n'
-		self.pos = Position(-1, 0, -1, self.fn, text)
+		if pos:
+			self.pos = pos
+		else:
+			self.pos = Position(-1, 0, -1, self.fn, text)
 		self.current_char = None
 		self.total_tokens = []
 		self.advance()
@@ -141,7 +152,7 @@ class Lexer:
 		self.pos.advance(self.current_char)
 		self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
 
-	def makeTokens(self):
+	def makeTokens(self, internalCall=False):
 		tokens = []
 		while self.current_char != None:
 			if self.current_char in ' \t':
@@ -172,6 +183,16 @@ class Lexer:
 			elif self.current_char == ')':
 				tokens.append(Token(T_RPAREN, pos_start=self.pos))
 				self.advance()
+			elif self.current_char == '[':
+				tokens.append(Token(T_LSBRACK, pos_start=self.pos))
+				res, error, pos = self.makeConditional()
+				self.pos.idx = self.pos.idx + pos[0]
+				self.pos.ln = pos[1]
+				self.pos.col = pos[2]
+				if error: return [], error
+
+				tokens.append(res)
+				tokens.append(Token(T_RSBRACK, pos_start=self.pos))
 			else:
 				pos_start = self.pos.copy()
 				char = self.current_char
@@ -179,7 +200,8 @@ class Lexer:
 				return [], IllegalCharError(pos_start, self.pos, "'" + char + "'")
 
 		if self.total_tokens:
-			self.total_tokens[-1].append(Token(T_EOF, pos_start=self.pos))
+			if self.total_tokens[-1][-1].type != T_EOF:
+				self.total_tokens[-1].append(Token(T_EOF, pos_start=self.pos))
 			return self.total_tokens, None
 		else:
 			return [], RunTimeError(self.pos, self.pos, 'No text found')
@@ -219,6 +241,9 @@ class Lexer:
 		elif kword == 'MOREEQUALS': return Token(T_MOREEQUALS, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'SAMEAS': return Token(T_SAMEAS, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'NOTSAMEAS': return Token(T_NOTSAMEAS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'IF': return Token(T_IF, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'ELSEIF': return Token(T_ELSEIF, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'ELSE': return Token(T_ELSE, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -239,6 +264,27 @@ class Lexer:
 			return 'error', 'Expected ' + '"'
 
 		return Token(T_STRING, value=string, pos_start=pos_start, pos_end=self.pos), None
+
+	def makeConditional(self):
+		ln = self.pos.ln
+		self.advance()
+		text = ''
+		while self.current_char != None:
+			if self.current_char == '\t':
+				self.advance()
+			if self.current_char == ']': 
+				self.advance()
+				break
+			text += self.current_char
+			self.advance()
+	
+		int_lexer = Lexer('<conditional>', text, pos=Position(-1, ln, -1, self.fn, text))
+		res, error = int_lexer.makeTokens()
+		if error: return [], error, (int_lexer.pos.idx, int_lexer.pos.ln, int_lexer.pos.col)
+		
+		return res, None, (int_lexer.pos.idx, int_lexer.pos.ln, int_lexer.pos.col)
+		# Need new line after '['
+		# Go line by line and lex each line into a list for everyline containing all the tokens for that line
 
 ################
 # AST NODE CLASSES
@@ -280,7 +326,7 @@ class unaryOpNode(BasicNode):
 		self.pos_end = self.node.pos_end
 
 	def __repr__(self):
-		return f'({self.op_tok}, {self.node})'
+		return f'({self.op_token}, {self.node})'
 
 
 class varAssignNode(BasicNode):

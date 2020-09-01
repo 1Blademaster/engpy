@@ -30,19 +30,24 @@ def runFromFile(file_name, debug=False):
 			print(result)
 
 
+
 if __name__ == '__main__':
-	if len(sys.argv) > 1:
-		if sys.argv[1] == 'shell':
-			if len(sys.argv) > 2:
-				if sys.argv[2] == '-d':
-					runFromShell(debug=True)
+	try:
+		if len(sys.argv) > 1:
+			if sys.argv[1] == 'shell':
+				if len(sys.argv) > 2:
+					if sys.argv[2] == '-d':
+						runFromShell(debug=True)
+				else:
+					runFromShell()
 			else:
-				runFromShell()
+				if len(sys.argv) > 2:
+					if sys.argv[2] == '-d':
+						runFromFile(sys.argv[1], debug=True)
+				else:
+					runFromFile(sys.argv[1])
 		else:
-			if len(sys.argv) > 2:
-				if sys.argv[2] == '-d':
-					runFromFile(sys.argv[1], debug=True)
-			else:
-				runFromFile(sys.argv[1])
-	else:
-		runFromShell()
+			runFromShell()
+	except Exception as e:
+		print(e)
+		print('Something went wrong, quitting.')
