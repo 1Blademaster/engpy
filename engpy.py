@@ -186,7 +186,6 @@ class Lexer:
 			elif self.current_char == '[':
 				tokens.append(Token(T_LSBRACK, pos_start=self.pos))
 				res, error, pos = self.makeConditional()
-				self.pos.idx = self.pos.idx + pos[0]
 				self.pos.ln = pos[1]
 				self.pos.col = pos[2]
 				if error: return [], error
@@ -293,6 +292,7 @@ class Lexer:
 class BasicNode:
 	output = False
 
+
 class numberNode(BasicNode):
 	def __init__(self, token):
 		self.type = 'numberNode'
@@ -386,6 +386,7 @@ class stringOpNode(BasicNode):
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
 
+
 class equalityNode(BasicNode):
 	def __init__(self, left_node, op_token, right_node):
 		self.type = 'equalityNode'
@@ -397,6 +398,37 @@ class equalityNode(BasicNode):
 
 	def __repr__(self):
 		return f'({self.left_node}, {self.op_token}, {self.right_node})'
+
+
+class conditionalNode(BasicNode):
+	def __init__(self, if_node, elseif_nodes=None, else_node=None):
+		self.type = 'conditionalNode'
+		self.if_node = if_node
+		if elseif_nodes:
+			self.elseif_nodes = elseif_nodes
+		if else_node:
+			self.else_node = else_node
+
+
+class ifNode(BasicNode):
+	def __init__(self, if_node, if_comp_node, if_code_nodes):
+		self.if_node = if_node
+		self.if_comp_node = if_comp_node
+		self.if_code_nodes = if_code_nodes
+
+
+class elseifNode(BasicNode):
+	def __init__(self, elseif_node, elseif_comp_node, elseif_code_nodes):
+		self.elseif_node = elseif_node
+		self.elseif_comp_node = elseif_comp_node
+		self.elseif_code_nodes = elseif_code_nodes
+
+
+class elseNode(BasicNode):
+	def __init__(self, else_node, else_code_nodes):
+		self.else_node = else_node
+		self.else_code_nodes = else_code_nodes
+		
 
 ################
 # PARSER
@@ -410,15 +442,42 @@ class Parser:
 		self.output = False
 		self.advance()
 
+	def buildConditional(self):
+		res = ParseResult()
+		if_node = self.current_tok
+		res.register(self.advance())
+		if_comp_node = self.equalityOp()
+		res.register(self.advance())
+		if_code_tokens = self.current_tok
+		if_code_nodes = []
+		for toks in if_code_tokens:
+			p = Parser(toks)
+			node = p.parse()
+			if node.error: node
+
+			if_code_nodes.append(node.node)
+
+		if_ast_node = ifNode(if_node, if_comp_node, if_code_nodes)
+		conditional_ast_node = conditionalNode(if_ast_node)
+		return res.success(conditional_ast_node)
+
 	def advance(self):
 		self.tok_idx += 1
 		if self.tok_idx < len(self.tokens):
 			self.current_tok = self.tokens[self.tok_idx]
+
 		return self.current_tok
 
 	def parse(self):
 		if self.tok_idx == 0 and self.tokens[self.tok_idx].type == T_VAR and self.tokens[self.tok_idx + 1].type == T_EQUALS:
 			res = self.varAssign()
+		elif self.tokens[0].type == T_IF:
+			res = self.buildConditional()
+			if res.error: return ParseResult().failure(res.error)
+			self.advance()
+			if self.current_tok.type != T_RSBRACK:
+				return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot find a closing ]'))
+			self.advance()
 		else:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
@@ -693,7 +752,7 @@ class Boolean:
 		return self
 
 	def __repr__(self):
-		return f'{self.value}'
+		return self.value
 
 
 class Comparision:
@@ -740,8 +799,8 @@ class Comparision:
 ################
 
 class Interpreter:
-	def __init__(self):
-		pass
+	def __init__(self, debug=False):
+		self.debug = debug
 
 	def visit(self, node):
 		method_name = f'visit_{type(node).__name__}'
@@ -867,6 +926,25 @@ class Interpreter:
 
 		return res.success(result.setPos(node.pos_start, node.pos_end)), node.output
 
+	def visit_conditionalNode(self, node):
+		res = RunTimeResult()
+		comparision_val, output = self.visit(node.if_node.if_comp_node.node)
+		if comparision_val.error: return comparision_val, None
+
+		comparision_val = comparision_val.value.value
+
+		if comparision_val:
+			for line in node.if_node.if_code_nodes:
+				result, output = self.visit(line)
+				if result.error: return result, None
+
+				if output or self.debug:
+					print(result.value)
+
+		return None, None
+
+
+
 class RunTimeResult:
 	def __init__(self):
 		self.value = None
@@ -908,11 +986,14 @@ def run(file_name, text, debug=False):
 
 		if debug:
 			print('\nAST:')
-			print(ast.node)
+			print(ast.node.type)
 
-		interpreter = Interpreter()
+		interpreter = Interpreter(debug=debug)
 		result, output = interpreter.visit(ast.node)
 		#print(result.value, result.error)
+		
+		if result == None and output == None:
+			continue
 
 		res = result.value
 		error = result.error
@@ -927,7 +1008,7 @@ def run(file_name, text, debug=False):
 				print(error)
 			return None, None
 		else:
-			if output:
+			if output or debug:
 				if res is not None:
 					print(res)
 	

@@ -4,6 +4,6 @@ z EQUALS "Hello World!"
 OUTPUT 5 ADD 5
 OUTPUT (LENGTH z) ADD (y MULTIPLIED x)
 OUTPUT "hello
-s
+	s
 "
 OUTPUT -5

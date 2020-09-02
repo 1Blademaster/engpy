@@ -32,7 +32,7 @@ def runFromFile(file_name, debug=False):
 
 
 if __name__ == '__main__':
-	try:
+	# try:
 		if len(sys.argv) > 1:
 			if sys.argv[1] == 'shell':
 				if len(sys.argv) > 2:
@@ -48,6 +48,6 @@ if __name__ == '__main__':
 					runFromFile(sys.argv[1])
 		else:
 			runFromShell()
-	except Exception as e:
-		print(e)
-		print('Something went wrong, quitting.')
+	# except Exception as e:
+	# 	print(e)
+	# 	print('Something went wrong, quitting.')

@@ -1,5 +1,7 @@
-OUTPUT 10
-[
-	5 ADD 5
-	x EQUALS 5 ADD 5
+IF 5 LESSTHAN 7 [
+	OUTPUT 5 ADD 5
+	x EQUALS "string"
+	OUTPUT x
 ]
+
+OUTPUT x
