@@ -404,14 +404,28 @@ class conditionalNode(BasicNode):
 	def __init__(self, if_node, elseif_nodes=None, else_node=None):
 		self.type = 'conditionalNode'
 		self.if_node = if_node
+		self.elseif_nodes = []
+		self.else_node = None
 		if elseif_nodes:
 			self.elseif_nodes = elseif_nodes
 		if else_node:
 			self.else_node = else_node
 
+	def addNode(self, node):
+		if isinstance(node, elseifNode):
+			pass
+		elif isinstance(node, elseNode):
+			if self.else_node:
+				pass #error else node already exists
+			self.else_node = node
+			return self, None
+		else:
+			pass #error wrong type of node
+
 
 class ifNode(BasicNode):
 	def __init__(self, if_node, if_comp_node, if_code_nodes):
+		self.type = 'ifNode'
 		self.if_node = if_node
 		self.if_comp_node = if_comp_node
 		self.if_code_nodes = if_code_nodes
@@ -419,6 +433,7 @@ class ifNode(BasicNode):
 
 class elseifNode(BasicNode):
 	def __init__(self, elseif_node, elseif_comp_node, elseif_code_nodes):
+		self.type = 'elseifNode'
 		self.elseif_node = elseif_node
 		self.elseif_comp_node = elseif_comp_node
 		self.elseif_code_nodes = elseif_code_nodes
@@ -426,6 +441,7 @@ class elseifNode(BasicNode):
 
 class elseNode(BasicNode):
 	def __init__(self, else_node, else_code_nodes):
+		self.type = 'elseNode'
 		self.else_node = else_node
 		self.else_code_nodes = else_code_nodes
 		
@@ -442,25 +458,6 @@ class Parser:
 		self.output = False
 		self.advance()
 
-	def buildConditional(self):
-		res = ParseResult()
-		if_node = self.current_tok
-		res.register(self.advance())
-		if_comp_node = self.equalityOp()
-		res.register(self.advance())
-		if_code_tokens = self.current_tok
-		if_code_nodes = []
-		for toks in if_code_tokens:
-			p = Parser(toks)
-			node = p.parse()
-			if node.error: node
-
-			if_code_nodes.append(node.node)
-
-		if_ast_node = ifNode(if_node, if_comp_node, if_code_nodes)
-		conditional_ast_node = conditionalNode(if_ast_node)
-		return res.success(conditional_ast_node)
-
 	def advance(self):
 		self.tok_idx += 1
 		if self.tok_idx < len(self.tokens):
@@ -474,67 +471,92 @@ class Parser:
 		elif self.tokens[0].type == T_IF:
 			res = self.buildConditional()
 			if res.error: return ParseResult().failure(res.error)
-			self.advance()
-			if self.current_tok.type != T_RSBRACK:
-				return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot find a closing ]'))
-			self.advance()
+			# self.advance()
+			# if self.current_tok.type != T_RSBRACK:
+			# 	return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot find a closing ]'))
+			# self.advance()
 		else:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
-				if self.checkIfEqualsKwordInTokens():
+				kword_check, error = self.checkIfEqualsKwordInTokens()
+				if error: return ParseResult().failure(error)
+
+				if kword_check:
 					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment'))
 				self.advance()
+				
+			eql_check, error = self.checkIfEqualityInTokens()
+			if error: return ParseResult().failure(error)
+
+			strlen_check, error = self.checkIfStringNotLengthInTokens()
+			if error: return ParseResult().failure(error)
+
 			
-			if self.checkIfEqualityInTokens():
+			if eql_check:
 				res = self.equalityOp()
-			elif self.checkIfStringNotLengthInTokens():
+			elif strlen_check:
 				res = self.stringOp()
 			else:
+				
 				res = self.expr()
 
 			if not res.error and self.current_tok.type != T_EOF:
 				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax'))
 
-		self.outputCopy = self.output
 		self.output = False
 		return res
 
 	def checkIfEqualsKwordInTokens(self):
 		equals_found = False
 		for tok in self.tokens[self.tok_idx:]:
-			if tok.type == T_EQUALS:
-				equals_found = True
+			if isinstance(tok, Token):
+				if tok.type == T_EQUALS:
+					equals_found = True
+			else:
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
 
-		return equals_found
+		return equals_found, None
 
 	def checkIfStringInTokens(self):
 		string_found = False
 		for tok in self.tokens[self.tok_idx:]:
-			if tok.type == T_STRING:
-				string_found = True
+			if isinstance(tok, Token):
+				if tok.type == T_STRING:
+					string_found = True
+			else:
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
 
-		return string_found
+		return string_found, None
 
 	def checkIfStringNotLengthInTokens(self):
 		string_found = False
 		for tok in self.tokens[self.tok_idx:]:
 			if tok.type == T_STRING:
 				string_found = True
+		
+		string_check, error = self.checkIfStringInTokens()
+		if error: return None, error
 
-		if not string_found:
-			return False
+		if not string_check:
+			return False, None
+
 		for tok in self.tokens:
-			if tok.type == T_LENGTH:
-				return False
-		return True
+			if isinstance(tok, Token):
+				if tok.type == T_LENGTH:
+					return False, None
+			else:
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+		return True, None
 
 	def checkIfEqualityInTokens(self):
 		equality_found = False
 		for tok in self.tokens[self.tok_idx:]:
-			if tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
-				equality_found = True
-
-		return equality_found
+			if isinstance(tok, Token):
+				if tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
+					equality_found = True
+			else:
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+		return equality_found, None
 
 	def factor(self):
 		res = ParseResult()
@@ -572,7 +594,10 @@ class Parser:
 			return res.success(n)
 		elif tok.type == T_LPAREN:
 			res.register(self.advance())
-			if self.checkIfStringInTokens():
+			strlen_check, error = self.checkIfStringNotLengthInTokens()
+			if error: return res.failure(error)
+
+			if strlen_check:
 				expr = res.register(self.stringOp())
 			else:
 				expr = res.register(self.expr())
@@ -584,13 +609,16 @@ class Parser:
 			else:
 				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')'"))
 
-		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, 'Invalid syntax in expression'))
+		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, f'Invalid syntax: Unknown token type found - {tok.type}'))
 
 	def term(self):
 		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
 
 	def expr(self):
-		if self.checkIfEqualityInTokens():
+		eql_check, error = self.checkIfEqualityInTokens()
+		if error: return ParseResult().failure(error)
+
+		if eql_check:
 			return self.equalityOp()
 		return self.binOp(self.term, [T_ADD, T_MINUS])
 
@@ -599,10 +627,13 @@ class Parser:
 		var = self.current_tok
 		res.register(self.advance())
 		if self.current_tok.type != T_EQUALS:
-			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected EQUALS"))
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected EQUALS'))
 		else:
 			res.register(self.advance())
-			if self.checkIfStringNotLengthInTokens():
+			strlen_check, error = self.checkIfStringNotLengthInTokens()
+			if error: return res.failure(error)
+
+			if strlen_check:
 				var_val = res.register(self.stringOp())
 			else:
 				var_val = res.register(self.expr())
@@ -640,6 +671,9 @@ class Parser:
 
 			left = stringOpNode(left, op_tok, right)
 
+		if self.current_tok.type in [T_ADD, T_MINUS, T_DIVIDED]:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot ADD, MINUS or DIVIDE with strings'))
+
 		left.output = self.output
 		return res.success(left)
 
@@ -655,9 +689,61 @@ class Parser:
 			if res.error: return res
 
 			left = equalityNode(left, op_tok, right)
+		else:
+			if self.current_tok.type == T_EQUALS:
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot compare variable assignment'))
 
 		left.output = self.output
 		return res.success(left)
+
+	def buildConditional(self):
+		res = ParseResult()
+		if_node = self.current_tok
+		res.register(self.advance())
+		if_comp_node = self.equalityOp()
+		if if_comp_node.error: return if_comp_node
+
+		res.register(self.advance())
+		if_code_tokens = self.current_tok
+		if_code_nodes = []
+		for toks in if_code_tokens:
+			p = Parser(toks)
+			node = p.parse()
+			if node.error: return node
+
+			if_code_nodes.append(node.node)
+
+		if_ast_node = ifNode(if_node, if_comp_node, if_code_nodes)
+		conditional_ast_node = conditionalNode(if_ast_node)
+		res.register(self.advance())
+		res.register(self.advance())
+		if self.current_tok.type == T_ELSEIF:
+			pass
+		elif self.current_tok.type == T_ELSE:
+			else_ast_node = self.buildElseConditional()
+			if else_ast_node.error: return else_ast_node
+
+			conditional_ast_node, error = conditional_ast_node.addNode(else_ast_node.node)
+			if error: return res.failure(error)
+		
+		return res.success(conditional_ast_node)
+
+	def buildElseConditional(self):
+		res = ParseResult()
+		else_node = self.current_tok
+		res.register(self.advance())
+		res.register(self.advance())
+		else_code_tokens = self.current_tok
+		else_code_nodes = []
+		for toks in else_code_tokens:
+			p = Parser(toks)
+			node = p.parse()
+			if node.error: return node
+
+			else_code_nodes.append(node.node)
+
+		else_ast_node = elseNode(else_node, else_code_nodes)
+		return res.success(else_ast_node)
 
 
 class ParseResult:
@@ -928,18 +1014,28 @@ class Interpreter:
 
 	def visit_conditionalNode(self, node):
 		res = RunTimeResult()
-		comparision_val, output = self.visit(node.if_node.if_comp_node.node)
-		if comparision_val.error: return comparision_val, None
+		if_comparision_val, output = self.visit(node.if_node.if_comp_node.node)
+		if if_comparision_val.error: return if_comparision_val, None
 
-		comparision_val = comparision_val.value.value
-
-		if comparision_val:
+		if if_comparision_val.value.value:
 			for line in node.if_node.if_code_nodes:
 				result, output = self.visit(line)
 				if result.error: return result, None
 
 				if output or self.debug:
 					print(result.value)
+		else:
+			if node.elseif_nodes:
+				# go through each comp_node
+				# whichever comp_node comes up as being True first, do code of that node
+				pass
+			elif node.else_node:
+				for line in node.else_node.else_code_nodes:
+					result, output = self.visit(line)
+					if result.error: return result, None
+
+					if output or self.debug:
+						print(result.value)
 
 		return None, None
 

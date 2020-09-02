@@ -1,7 +1,7 @@
-IF 5 LESSTHAN 7 [
-	OUTPUT 5 ADD 5
-	x EQUALS "string"
-	OUTPUT x
-]
+x EQUALS 5
 
-OUTPUT x
+IF x SAMEAS 5 [
+	OUTPUT "same"
+] ELSE [
+	OUTPUT "not same"
+]
