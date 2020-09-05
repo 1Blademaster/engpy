@@ -151,10 +151,12 @@ class Lexer:
 	def advance(self):
 		self.pos.advance(self.current_char)
 		self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
+		return self.current_char
 
 	def makeTokens(self, internalCall=False):
 		tokens = []
 		while self.current_char != None:
+			# print(repr(self.current_char), tokens)
 			if self.current_char in ' \t':
 				self.advance()
 			elif self.current_char in '\n':
@@ -192,6 +194,12 @@ class Lexer:
 
 				tokens.append(res)
 				tokens.append(Token(T_RSBRACK, pos_start=self.pos))
+				self.advance()
+				# print(self.current_char)
+				# print(tokens, '_')
+			elif self.current_char == ']':
+				tokens.append(Token(T_RSBRACK, pos_start=self.pos))
+				self.advance()
 			else:
 				pos_start = self.pos.copy()
 				char = self.current_char
@@ -268,18 +276,29 @@ class Lexer:
 		ln = self.pos.ln
 		self.advance()
 		text = ''
+		open_sbracks = 0
+		close_sbracks = 0
 		while self.current_char != None:
 			if self.current_char == '\t':
 				self.advance()
-			if self.current_char == ']': 
-				self.advance()
-				break
+			if self.current_char == '[':
+				open_sbracks += 1
+			if self.current_char == ']':
+				close_sbracks += 1
+				if close_sbracks == open_sbracks:
+					text += ']'
+					self.advance()
+					continue
+				else:
+					break
 			text += self.current_char
 			self.advance()
-	
+
+		# print(text)
 		int_lexer = Lexer('<conditional>', text, pos=Position(-1, ln, -1, self.fn, text))
 		res, error = int_lexer.makeTokens()
 		if error: return [], error, (int_lexer.pos.idx, int_lexer.pos.ln, int_lexer.pos.col)
+		# print(res)
 		
 		return res, None, (int_lexer.pos.idx, int_lexer.pos.ln, int_lexer.pos.col)
 		# Need new line after '['
@@ -421,6 +440,9 @@ class conditionalNode(BasicNode):
 			return self, None
 		else:
 			pass #error wrong type of node
+
+	def __repr__(self):
+		return f'(if:{bool(self.if_node)}, elseif:{bool(self.elseif_nodes)}, else:{bool(self.else_node)})'
 
 
 class ifNode(BasicNode):
@@ -1014,16 +1036,20 @@ class Interpreter:
 
 	def visit_conditionalNode(self, node):
 		res = RunTimeResult()
+		result = None
 		if_comparision_val, output = self.visit(node.if_node.if_comp_node.node)
 		if if_comparision_val.error: return if_comparision_val, None
+
+		# print(if_comparision_val.value.value)
 
 		if if_comparision_val.value.value:
 			for line in node.if_node.if_code_nodes:
 				result, output = self.visit(line)
-				if result.error: return result, None
+				if result:
+					if result.error: return result, None
 
-				if output or self.debug:
-					print(result.value)
+					if output or self.debug:
+						print(result.value)
 		else:
 			if node.elseif_nodes:
 				# go through each comp_node
@@ -1032,12 +1058,16 @@ class Interpreter:
 			elif node.else_node:
 				for line in node.else_node.else_code_nodes:
 					result, output = self.visit(line)
-					if result.error: return result, None
+					if result:
+						if result.error: return result, None
 
-					if output or self.debug:
-						print(result.value)
+						if output or self.debug:
+							print(result.value)
 
-		return None, None
+		if not result:
+			return None, None
+		else:
+			return res.success(result.value), None
 
 
 
