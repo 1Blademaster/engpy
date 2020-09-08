@@ -432,7 +432,8 @@ class conditionalNode(BasicNode):
 
 	def addNode(self, node):
 		if isinstance(node, elseifNode):
-			pass
+			self.elseif_nodes.append(node)
+			return self, None
 		elif isinstance(node, elseNode):
 			if self.else_node:
 				pass #error else node already exists
@@ -739,15 +740,30 @@ class Parser:
 		conditional_ast_node = conditionalNode(if_ast_node)
 		res.register(self.advance())
 		res.register(self.advance())
+
 		if self.current_tok.type == T_ELSEIF:
-			pass
-		elif self.current_tok.type == T_ELSE:
+			elseif_nodes_list = []
+			while self.current_tok.type == T_ELSEIF:
+				elseif_ast_node = self.buildElseIfConditional()
+				if elseif_ast_node.error: return elseif_ast_node
+
+				res.register(self.advance())
+				res.register(self.advance())
+				elseif_nodes_list.append(elseif_ast_node)
+
+			for node in elseif_nodes_list:
+				conditional_ast_node, error = conditional_ast_node.addNode(node.node)
+				if error: return res.failure(error)
+			# go through and get the ast node for the elseif token
+			# check if there are any other elseif tokens by checking the next token :- while current tok is elseif
+		if self.current_tok.type == T_ELSE:
 			else_ast_node = self.buildElseConditional()
 			if else_ast_node.error: return else_ast_node
 
 			conditional_ast_node, error = conditional_ast_node.addNode(else_ast_node.node)
 			if error: return res.failure(error)
 		
+		# print(conditional_ast_node)
 		return res.success(conditional_ast_node)
 
 	def buildElseConditional(self):
@@ -766,6 +782,26 @@ class Parser:
 
 		else_ast_node = elseNode(else_node, else_code_nodes)
 		return res.success(else_ast_node)
+
+	def buildElseIfConditional(self):
+		res = ParseResult()
+		elseif_node = self.current_tok
+		res.register(self.advance())
+		elseif_comp_node = self.equalityOp()
+		if elseif_comp_node.error: return elseif_comp_node
+
+		res.register(self.advance())
+		elseif_code_tokens = self.current_tok
+		elseif_code_nodes = []
+		for toks in elseif_code_tokens:
+			p = Parser(toks)
+			node = p.parse()
+			if node.error: return node
+
+			elseif_code_nodes.append(node.node)
+
+		elseif_ast_node = elseifNode(elseif_node, elseif_comp_node, elseif_code_nodes)
+		return res.success(elseif_ast_node)
 
 
 class ParseResult:
@@ -786,6 +822,9 @@ class ParseResult:
 	def failure(self, error):
 		self.error = error
 		return self
+
+	def __repr__(self):
+		return f'(ParseResult: {self.node})'
 
 ################
 # TYPE CLASSES
@@ -1052,6 +1091,8 @@ class Interpreter:
 						print(result.value)
 		else:
 			if node.elseif_nodes:
+				for node in node.elseif_nodes:
+					
 				# go through each comp_node
 				# whichever comp_node comes up as being True first, do code of that node
 				pass

@@ -1,0 +1,11 @@
+x EQUALS 5
+
+IF x LESSTHAN 3 [
+    OUTPUT "ok"
+] ELSEIF x LESSTHAN 5 [
+    OUTPUT "y"
+] ELSEIF x LESSTHAN 10 [
+    OUTPUT "l"
+] ELSE [
+    OUTPUT "no"
+]
