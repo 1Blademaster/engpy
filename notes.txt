@@ -23,6 +23,14 @@ stringExpr = stringExpr JOIN stringExpr
 comparision = expr comparisionOperator expr
 			= stringExpr comparisionOperator stringExpr
 
+IF comparision [
+
+] ELSEIF comparision [
+
+] ELSE [
+
+]
+
 
 
 #################
@@ -74,7 +82,13 @@ based on the number it read through. The makeBinOp method is a similar method wh
 MULTIPLIED and DIVIDED to figure out which binary operation to complete on the number values. It does this by going through
 the consecutive characters and added them together to create one of the keywords, if the word created matches then the 
 operation Token is returned, otherwise an error is returned. The makeTokens method will return an IllegalCharError object
-if there is a character which does not come under any declared characters of the language.
+if there is a character which does not come under any declared characters of the language. To create multiline code which
+can be executed if a statement is correct, for example in an if-else statement, then the lexer creates a list where each
+line in the code which is to be executed is another list which contains the tokens for that line of code. The lexer does this
+by recognising the usage of '[', this then triggeres the makeConditional method, this method recursively calls the maketokens
+method in a new lexer class and the text inputted is all the characters between the first opening '[' and the last closing ']'.
+This main method then returns a list of tokens for the different lines of code between the square brackets, an error if there 
+is one and the new position values for the main lexer.
 
 # AST NODE CLASSES
 
@@ -113,6 +127,12 @@ is on the right hand side.
 equalityNode - left_node, op_token, right_node:
 This class is used for the equality comparisions on an AST. The left_node is the node on the left side of the op_token and the right_node
 is on the right hand side.
+
+conditionalNode - if_node, elseif_nodes, else_node:
+This class is used to be the main 'root' for an if-else statement tree. It contains the if node, which has to be specified, and any elseif
+and else nodes which are optional. The elseif nodes are stored in a list because there can be multiple elseif nodes in a single statement.
+The addNode method is used to easily add elseif and else nodes to the attributes of the conditionalNode whilst also checking the instances
+of the nodes which are being added to make sure there are no errors.
 
 
 # PARSER

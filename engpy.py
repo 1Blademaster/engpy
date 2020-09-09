@@ -552,10 +552,10 @@ class Parser:
 		return string_found, None
 
 	def checkIfStringNotLengthInTokens(self):
-		string_found = False
-		for tok in self.tokens[self.tok_idx:]:
-			if tok.type == T_STRING:
-				string_found = True
+		# string_found = False
+		# for tok in self.tokens[self.tok_idx:]:
+		# 	if tok.type == T_STRING:
+		# 		string_found = True
 		
 		string_check, error = self.checkIfStringInTokens()
 		if error: return None, error
@@ -1090,13 +1090,27 @@ class Interpreter:
 					if output or self.debug:
 						print(result.value)
 		else:
+			elseif_completed = False
 			if node.elseif_nodes:
-				for node in node.elseif_nodes:
-					
 				# go through each comp_node
 				# whichever comp_node comes up as being True first, do code of that node
-				pass
-			elif node.else_node:
+				for elseif_node in node.elseif_nodes:
+					elseif_comparision_val, output = self.visit(elseif_node.elseif_comp_node.node)
+					if elseif_comparision_val.error: return elseif_comparision_val, None
+					
+					# print(elseif_comparision_val.value.value)
+					if elseif_comparision_val.value.value:
+						for line in elseif_node.elseif_code_nodes:
+							result, output = self.visit(line)
+							if result:
+								if result.error: return result, None
+
+								if output or self.debug:
+									print(result.value)
+						elseif_completed = True
+						break
+
+			if node.else_node and not elseif_completed:
 				for line in node.else_node.else_code_nodes:
 					result, output = self.visit(line)
 					if result:
@@ -1109,7 +1123,6 @@ class Interpreter:
 			return None, None
 		else:
 			return res.success(result.value), None
-
 
 
 class RunTimeResult:
