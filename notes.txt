@@ -134,6 +134,20 @@ and else nodes which are optional. The elseif nodes are stored in a list because
 The addNode method is used to easily add elseif and else nodes to the attributes of the conditionalNode whilst also checking the instances
 of the nodes which are being added to make sure there are no errors.
 
+ifNode - if_node, if_comp_node, if_code_nodes:
+This class is used for the if statement on an if-else statement tree. The if_node attribute points to the IF token, the if_comp_node is the 
+equalityNode which is used in the if statement and the if_code_nodes is the list of nodes from the lines of code which are to be executed if
+the statement is correct.
+
+elseifNode - elseif_node, elseif_comp_node, elseif_code_nodes:
+This class is used for the elseif statements on an if-else statement tree. The elseif_node attribute points to the ELSEIF token, the 
+elseif_comp_node is the equalityNode which is used in the elseif statement and the elseif_code_nodes is the list of nodes from the lines of 
+code which are to be executed if the statement is correct.
+
+elseNode - else_node, else_code_nodes:
+This class is used for the else statement on an if-else statement tree. The else_node points to the ELSE token and the else_code_nodes is the 
+list of nodes from the lines of code which are to be executed if the no other statement is correct, this is why there is no equalityNode
+assigned in this node.
 
 # PARSER
 
@@ -145,13 +159,22 @@ the 3 nodes of the expression in the AST. This is done on a loop. The first argu
 return of the right expression, this checks if there is a '+' or '-' infront of the number, if the number is an integer or float,
 and if there are any parantheses in the expression, if there are, then it recursively calls in expr method inside the parantheses
 to get the binOpNode for the value inside. The parse method will also return an InvalidSyntaxError object indicating a missing 
-binary operator. The factor method will also return InvalidSyntaxError objects if there is a missing
-parenthesis or number. The parser has methods to check if certain tokens are in the token stream, and can do certain operations
-based on that information, for example if there is a String token but no Length token, then the parser will use the stringOp method
-to do an operation on a string, but if there is a Length token as well as a String token, then it will carry out the expr method as
-the Length of a String returns a number, hence we can do arithmitcal operations using it. This is the same with equality tokens, if
-the token stream has an equality token then the parser will set the precedence for equality at the top and will then check for other 
-equality tokens, if none are found then it will find the expressions involved in the equality comparision.
+binary operator. The factor method will also return InvalidSyntaxError objects if there is a missing parenthesis or number. The 
+parser has methods to check if certain tokens are in the token stream, and can do certain operations based on that information, 
+for example if there is a String token but no Length token, then the parser will use the stringOp method to do an operation on 
+a string, but if there is a Length token as well as a String token, then it will carry out the expr method as the Length of a 
+String returns a number, hence we can do arithmitcal operations using it. This is the same with equality tokens, if the token 
+stream has an equality token then the parser will set the precedence for equality at the top and will then check for other 
+equality tokens, if none are found then it will find the expressions involved in the equality comparision. For if-else statements
+the parser will call the method buildConditional once it detects an IF token since that is what you need to create an if-else 
+statement in the first place. This method will then get then call the equalityOp method to return the comparision node for the
+statement, then it will go through the different lines of code which is to be executed in the if-else statement and recursively
+get all the nodes for each different line of code and then add them to a list to create a list of AST nodes which is attatched to
+the ifNode node and then advances. If it finds an ELSEIF token then it will try to do the same procedure as it did for the IF token
+but this time it will repeat the search for more ELSEIF nodes as an if-else statement tree can contain multiple elseif branches, it
+will add all the elseif nodes to another list to be added to the main conditionalNode which the buildConditional method will return
+in the end, this is all done in another seperate function called BuildElseIfConditional. If there is an ELSE node after the ELSEIF 
+nodes, then it will call the buildElseConditional method to repeate the process and to return with an elseNode for the AST.
 
 ParseResult - :
 
@@ -180,7 +203,7 @@ with other Strings and it will compare the length of them as integers.
 
 # INTERPRETER
 
-Interpreter - node:
+Interpreter - debug:
 This class is used to traverse the AST and return the end value for the expression which was inputted by the user. It achieves
 this by going to the different nodes in the tree and figuring out which binary operation to do on the left and right node of the
 operator. There are different methods for visiting the different types of nodes. The visit_numberNode method just returns the number
@@ -190,7 +213,15 @@ infront of the number token and then multiplies the number by -1 to make it nega
 interpreter will add a key-value pair to the VARS_SAVED dictionary constant where the key is the name of the variable and the value
 is the value which would be assigned to the variable. The value for a particular variable is also retrievable from the VARS_SAVED
 dictionary and will return the object of the value saved, for example if a string was saved then it would return a String object, these
-can then be used in further expressions. 
+can then be used in further expressions. If an equalityNode is detected, then the visit_equalityNode method will build a Comparision
+object which contain the operator token and the left and right sides of that token. The compare method is then called on that Comparision
+object which returns a Boolean value, this can then be used in other statements such as if-else statements. If a conditionalNode is
+inputted, then the visit_conditionalNode method is called. This method gets the if_node from the conditionalNode and checks wether
+the comparision for that if_node is True, if it is then each line in the if_code_nodes is visited and if an output value is returned or 
+the debug option is on, then the result is printed to the screen and the line increments to the next line if there is one. If the if_node
+is false, then elseif_nodes are searched for and the same process repeats for each elseif_node found. If no elseif_nodes are found or none
+of them are True, then an else node is searched for and if found, the code inside it is executed immedietely since there is no comparisions
+to work through and complete. 
 
 RunTimeResult - :
 
