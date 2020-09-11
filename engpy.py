@@ -188,15 +188,13 @@ class Lexer:
 			elif self.current_char == '[':
 				tokens.append(Token(T_LSBRACK, pos_start=self.pos))
 				res, error, pos = self.makeConditional()
-				self.pos.ln = pos[1]
+				self.pos.ln = pos[1] - 1
 				self.pos.col = pos[2]
 				if error: return [], error
 
 				tokens.append(res)
 				tokens.append(Token(T_RSBRACK, pos_start=self.pos))
 				self.advance()
-				# print(self.current_char)
-				# print(tokens, '_')
 			elif self.current_char == ']':
 				tokens.append(Token(T_RSBRACK, pos_start=self.pos))
 				self.advance()
@@ -498,6 +496,12 @@ class Parser:
 			# if self.current_tok.type != T_RSBRACK:
 			# 	return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot find a closing ]'))
 			# self.advance()
+		elif self.tokens[0].type in [T_ELSE, T_ELSEIF]:
+			print(self.current_tok.pos_end)
+			if self.tokens[0].type == T_ELSE:
+				return ParseResult().failure(InvalidSyntaxError(self.tokens[0].pos_start, self.tokens[0].pos_start, 'No IF detected before ELSE [E5]'))
+			elif self.tokens[0].type == T_ELSEIF:
+				return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_start, 'No IF detected before IFELSE [E6]'))
 		else:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
@@ -505,7 +509,7 @@ class Parser:
 				if error: return ParseResult().failure(error)
 
 				if kword_check:
-					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment'))
+					return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot output an assignment [E7]'))
 				self.advance()
 				
 			eql_check, error = self.checkIfEqualityInTokens()
@@ -524,7 +528,7 @@ class Parser:
 				res = self.expr()
 
 			if not res.error and self.current_tok.type != T_EOF:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax'))
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax [E8]'))
 
 		self.output = False
 		return res
@@ -535,8 +539,10 @@ class Parser:
 			if isinstance(tok, Token):
 				if tok.type == T_EQUALS:
 					equals_found = True
+				elif tok.type == T_LSBRACK:
+					break
 			else:
-				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token [E12]')
 
 		return equals_found, None
 
@@ -546,8 +552,10 @@ class Parser:
 			if isinstance(tok, Token):
 				if tok.type == T_STRING:
 					string_found = True
+				elif tok.type == T_LSBRACK:
+					break
 			else:
-				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token [E13]')
 
 		return string_found, None
 
@@ -567,8 +575,10 @@ class Parser:
 			if isinstance(tok, Token):
 				if tok.type == T_LENGTH:
 					return False, None
+				elif tok.type == T_LSBRACK:
+					break
 			else:
-				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token [E14]')
 		return True, None
 
 	def checkIfEqualityInTokens(self):
@@ -577,9 +587,23 @@ class Parser:
 			if isinstance(tok, Token):
 				if tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
 					equality_found = True
+				elif tok.type == T_LSBRACK:
+					break
 			else:
-				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token')
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token [E15]')
 		return equality_found, None
+
+	def checkIfStringOpInTokens(self):
+		stringop_found = False
+		for tok in self.tokens[self.tok_idx:]:
+			if isinstance(tok, Token):
+				if tok.type in [T_JOIN]:
+					stringop_found = True
+				elif tok.type == T_LSBRACK:
+					break
+			else:
+				return None, InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Invalid syntax: list found instead of token [E16]')
+		return stringop_found, None
 
 	def factor(self):
 		res = ParseResult()
@@ -617,10 +641,15 @@ class Parser:
 			return res.success(n)
 		elif tok.type == T_LPAREN:
 			res.register(self.advance())
+			stringop_check, error = self.checkIfStringOpInTokens()
+			if error: return res.failure(error)
+
 			strlen_check, error = self.checkIfStringNotLengthInTokens()
 			if error: return res.failure(error)
 
-			if strlen_check:
+			if stringop_check:
+				expr = res.register(self.stringOp())
+			elif strlen_check:
 				expr = res.register(self.stringOp())
 			else:
 				expr = res.register(self.expr())
@@ -630,18 +659,18 @@ class Parser:
 				res.register(self.advance())
 				return res.success(expr)
 			else:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')'"))
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')' [E9]"))
 
-		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, f'Invalid syntax: Unknown token type found - {tok.type}'))
+		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, f'Invalid syntax: Unknown token type found - {tok.type} [E10]'))
 
 	def term(self):
 		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
 
-	def expr(self):
+	def expr(self, skipEqlCheck=False):
 		eql_check, error = self.checkIfEqualityInTokens()
 		if error: return ParseResult().failure(error)
 
-		if eql_check:
+		if eql_check and not skipEqlCheck:
 			return self.equalityOp()
 		return self.binOp(self.term, [T_ADD, T_MINUS])
 
@@ -650,7 +679,7 @@ class Parser:
 		var = self.current_tok
 		res.register(self.advance())
 		if self.current_tok.type != T_EQUALS:
-			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected EQUALS'))
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected EQUALS [E11]'))
 		else:
 			res.register(self.advance())
 			strlen_check, error = self.checkIfStringNotLengthInTokens()
@@ -702,20 +731,30 @@ class Parser:
 
 	def equalityOp(self):
 		res = ParseResult()
-		left = res.register(self.factor())
+		strlen_check, error = self.checkIfStringNotLengthInTokens()
+		if error: return ParseResult().failure(error)
+		if strlen_check:
+			left = res.register(self.stringOp())
+		else:
+			left = res.register(self.expr(skipEqlCheck=True))
 		if res.error: return res
 
 		while self.current_tok.type in [T_LESSTHAN, T_MORETHAN, T_LESSEQUALS, T_MOREEQUALS, T_SAMEAS, T_NOTSAMEAS]:
 			op_tok = self.current_tok
 			res.register(self.advance())
-			right = res.register(self.factor())
+			strlen_check, error = self.checkIfStringNotLengthInTokens()
+			if error: return ParseResult().failure(error)
+			if strlen_check:
+				right = res.register(self.stringOp())
+			else:
+				right = res.register(self.expr(skipEqlCheck=True))
 			if res.error: return res
 
 			left = equalityNode(left, op_tok, right)
 		else:
 			if self.current_tok.type == T_EQUALS:
 				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot compare variable assignment'))
-
+		
 		left.output = self.output
 		return res.success(left)
 
@@ -1006,7 +1045,6 @@ class Interpreter:
 
 	def visit_varAssignNode(self, node):
 		res = RunTimeResult()
-		number = res.register(self.visit(node.node))
 		if res.error: return res, None
 
 		expr = node.node
