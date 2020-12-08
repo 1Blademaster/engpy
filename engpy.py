@@ -14,8 +14,8 @@ T_STRING = 'STRING'
 
 T_ADD = 'ADD'
 T_MINUS = 'MINUS'
-T_MULTIPLIED = 'MULTIPLIED'
-T_DIVIDED = 'DIVIDED'
+T_MULTIPLY = 'MULTIPLY'
+T_DIVIDE = 'DIVIDE'
 
 T_LPAREN = 'LPAREN'
 T_RPAREN = 'RPAREN'
@@ -234,8 +234,8 @@ class Lexer:
 
 		if kword == 'ADD': return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'MINUS': return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'MULTIPLIED': return Token(T_MULTIPLIED, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'DIVIDED': return Token(T_DIVIDED, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'MULTIPLY': return Token(T_MULTIPLY, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'DIVIDE': return Token(T_DIVIDE, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'LENGTH': return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'JOIN': return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
@@ -497,7 +497,6 @@ class Parser:
 			# 	return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot find a closing ]'))
 			# self.advance()
 		elif self.tokens[0].type in [T_ELSE, T_ELSEIF]:
-			print(self.current_tok.pos_end)
 			if self.tokens[0].type == T_ELSE:
 				return ParseResult().failure(InvalidSyntaxError(self.tokens[0].pos_start, self.tokens[0].pos_start, 'No IF detected before ELSE [E5]'))
 			elif self.tokens[0].type == T_ELSEIF:
@@ -664,7 +663,7 @@ class Parser:
 		return res.failure(InvalidSyntaxError(tok.pos_start, tok.pos_end, f'Invalid syntax: Unknown token type found - {tok.type} [E10]'))
 
 	def term(self):
-		return self.binOp(self.factor, [T_MULTIPLIED, T_DIVIDED])
+		return self.binOp(self.factor, [T_MULTIPLY, T_DIVIDE])
 
 	def expr(self, skipEqlCheck=False):
 		eql_check, error = self.checkIfEqualityInTokens()
@@ -715,7 +714,7 @@ class Parser:
 		left = res.register(self.factor())
 		if res.error: return res
 
-		while self.current_tok.type in [T_JOIN, T_MULTIPLIED]:
+		while self.current_tok.type in [T_JOIN, T_MULTIPLY]:
 			op_tok = self.current_tok
 			res.register(self.advance())
 			right = res.register(self.factor())
@@ -723,7 +722,7 @@ class Parser:
 
 			left = stringOpNode(left, op_tok, right)
 
-		if self.current_tok.type in [T_ADD, T_MINUS, T_DIVIDED]:
+		if self.current_tok.type in [T_ADD, T_MINUS, T_DIVIDE]:
 			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot ADD, MINUS or DIVIDE with strings'))
 
 		left.output = self.output
@@ -1016,9 +1015,9 @@ class Interpreter:
 			result, error = left.addedTo(right)
 		if op_tok_type == T_MINUS:
 			result, error = left.minusTo(right)
-		if op_tok_type == T_MULTIPLIED:
+		if op_tok_type == T_MULTIPLY:
 			result, error = left.multipliedTo(right)
-		if op_tok_type == T_DIVIDED:
+		if op_tok_type == T_DIVIDE:
 			result, error = left.dividedTo(right)
 
 		# right is Number object
@@ -1084,7 +1083,7 @@ class Interpreter:
 
 		if op_tok_type == T_JOIN:
 			result, error = left.joinedTo(right)
-		if op_tok_type == T_MULTIPLIED:
+		if op_tok_type == T_MULTIPLY:
 			if isinstance(left, Number):
 				result, error = right.multipliedTo(left)
 			else:

@@ -15,7 +15,8 @@ factor = INT or FLOAT
 
 ----- Strings -----
 
-stringExpr = stringExpr JOIN stringExpr
+stringExpr = STRING
+		   = stringExpr JOIN stringExpr
 		   = stringExpr MULTIPLIED factor
 
 ----- Comparision -----
