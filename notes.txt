@@ -32,6 +32,10 @@ IF comparision [
 
 ]
 
+FOR var FROM INT TO INT [
+	
+]
+
 
 
 #################

@@ -37,6 +37,10 @@ T_IF = 'IF'
 T_ELSEIF = 'ELSEIF'
 T_ELSE = 'ELSE'
 
+T_FOR = 'FOR'
+T_FROM = 'FROM'
+T_TO = 'TO'
+
 T_EOF = 'EOF'
 
 VARS_SAVED = {}
@@ -101,7 +105,7 @@ class Token:
 			self.pos_end = pos_end.copy()
 
 	def __repr__(self):
-		if self.value: 
+		if self.value != None: 
 			if self.type == T_STRING:
 				return f'{self.type}:"{self.value}"'
 			return f'{self.type}:{self.value}'
@@ -249,6 +253,9 @@ class Lexer:
 		elif kword == 'IF': return Token(T_IF, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'ELSEIF': return Token(T_ELSEIF, pos_start=pos_start, pos_end=self.pos)
 		elif kword == 'ELSE': return Token(T_ELSE, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'FOR': return Token(T_FOR, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'FROM': return Token(T_FROM, pos_start=pos_start, pos_end=self.pos)
+		elif kword == 'TO': return Token(T_TO, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -308,6 +315,9 @@ class Lexer:
 
 class BasicNode:
 	output = False
+
+	def __repr__(self):
+		return f'{self.type}'
 
 
 class numberNode(BasicNode):
@@ -465,6 +475,18 @@ class elseNode(BasicNode):
 		self.type = 'elseNode'
 		self.else_node = else_node
 		self.else_code_nodes = else_code_nodes
+
+
+class forNode(BasicNode):
+	def __init__(self, var_node, from_node, to_node, code_nodes):
+		self.type = 'forNode'
+		self.var_node = var_node
+		self.from_node = from_node
+		self.to_node = to_node
+		self.code_nodes = code_nodes
+
+	def __repr__(self):
+		return f'(for: var:{self.var_node} from:{self.from_node} to:{self.to_node}) code:{self.code_nodes}'
 		
 
 ################
@@ -501,6 +523,9 @@ class Parser:
 				return ParseResult().failure(InvalidSyntaxError(self.tokens[0].pos_start, self.tokens[0].pos_start, 'No IF detected before ELSE [E5]'))
 			elif self.tokens[0].type == T_ELSEIF:
 				return ParseResult().failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_start, 'No IF detected before IFELSE [E6]'))
+		elif self.tokens[0].type == T_FOR:
+			res = self.buildForLoop()
+			if res.error: return ParseResult().failure(res.error)
 		else:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
@@ -723,7 +748,7 @@ class Parser:
 			left = stringOpNode(left, op_tok, right)
 
 		if self.current_tok.type in [T_ADD, T_MINUS, T_DIVIDE]:
-			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot ADD, MINUS or DIVIDE with strings'))
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot ADD, MINUS or DIVIDE with strings [E17]'))
 
 		left.output = self.output
 		return res.success(left)
@@ -752,7 +777,7 @@ class Parser:
 			left = equalityNode(left, op_tok, right)
 		else:
 			if self.current_tok.type == T_EQUALS:
-				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot compare variable assignment'))
+				return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Cannot compare variable assignment [E18]'))
 		
 		left.output = self.output
 		return res.success(left)
@@ -840,6 +865,44 @@ class Parser:
 
 		elseif_ast_node = elseifNode(elseif_node, elseif_comp_node, elseif_code_nodes)
 		return res.success(elseif_ast_node)
+
+	def buildForLoop(self):
+		res = ParseResult()
+		res.register(self.advance())
+		if self.current_tok.type != T_VAR:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected a variable after for loop declaration [E19]'))
+		var_node = varNode(self.current_tok)
+
+		res.register(self.advance())
+		if self.current_tok.type != T_FROM:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected a FROM keyword in loop declaration [E20]'))
+		res.register(self.advance())
+
+		if self.current_tok.type != T_INT:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the FROM keyword in loop declaration [E21]'))
+		from_node = numberNode(self.current_tok)
+		res.register(self.advance())
+
+		if self.current_tok.type != T_TO:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected a TO keyword in loop declaration [E22]'))
+		res.register(self.advance())
+
+		if self.current_tok.type != T_INT:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the TO keyword in loop declaration [E23]'))
+		to_node = numberNode(self.current_tok)
+		res.register(self.advance())
+		
+		res.register(self.advance())
+		code_nodes = []
+		for toks in self.current_tok:
+			p = Parser(toks)
+			node = p.parse()
+			if node.error: return node
+
+			code_nodes.append(node.node)
+
+		for_node = forNode(var_node, from_node, to_node, code_nodes)
+		return res.success(for_node)
 
 
 class ParseResult:
@@ -1160,6 +1223,30 @@ class Interpreter:
 			return None, None
 		else:
 			return res.success(result.value), None
+	
+	def visit_forNode(self, node):
+		res = RunTimeResult()
+		result = None
+		var_val = node.var_node.node.value
+		from_val = node.from_node.token.value
+		to_val = node.to_node.token.value
+		VARS_SAVED[var_val] = res.register(self.visit(node.from_node))
+
+		for i in range(from_val, to_val):
+			for line in node.code_nodes:
+				result, output = self.visit(line)
+				if result:
+					if result.error: return result, None
+
+					if output or self.debug:
+						print(result.value)
+				
+				VARS_SAVED[var_val].value += 1
+
+		if not result:
+			return None, None
+		else:
+			return res.success(result.value), None
 
 
 class RunTimeResult:
@@ -1203,7 +1290,7 @@ def run(file_name, text, debug=False):
 
 		if debug:
 			print('\nAST:')
-			print(ast.node.type)
+			print(ast.node)
 
 		interpreter = Interpreter(debug=debug)
 		result, output = interpreter.visit(ast.node)

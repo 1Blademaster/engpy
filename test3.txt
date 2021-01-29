@@ -1,0 +1,3 @@
+x EQUALS 6
+OUTPUT x
+
