@@ -1,4 +1,5 @@
 import string
+import string
 
 ################
 # CONSTANTS
@@ -40,6 +41,7 @@ T_ELSE = 'ELSE'
 T_FOR = 'FOR'
 T_FROM = 'FROM'
 T_TO = 'TO'
+T_BREAK = 'BREAK'
 
 T_EOF = 'EOF'
 
@@ -236,26 +238,27 @@ class Lexer:
 			kword += self.current_char
 			self.advance()
 
-		if kword == 'ADD': return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'MINUS': return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'MULTIPLY': return Token(T_MULTIPLY, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'DIVIDE': return Token(T_DIVIDE, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'EQUALS': return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'LENGTH': return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'JOIN': return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'OUTPUT': return Token(T_OUTPUT, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'LESSTHAN': return Token(T_LESSTHAN, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'MORETHAN': return Token(T_MORETHAN, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'LESSEQUALS': return Token(T_LESSEQUALS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'MOREEQUALS': return Token(T_MOREEQUALS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'SAMEAS': return Token(T_SAMEAS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'NOTSAMEAS': return Token(T_NOTSAMEAS, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'IF': return Token(T_IF, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'ELSEIF': return Token(T_ELSEIF, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'ELSE': return Token(T_ELSE, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'FOR': return Token(T_FOR, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'FROM': return Token(T_FROM, pos_start=pos_start, pos_end=self.pos)
-		elif kword == 'TO': return Token(T_TO, pos_start=pos_start, pos_end=self.pos)
+		if kword == T_ADD: return Token(T_ADD, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_MINUS: return Token(T_MINUS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_MULTIPLY: return Token(T_MULTIPLY, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_DIVIDE: return Token(T_DIVIDE, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_EQUALS: return Token(T_EQUALS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_LENGTH: return Token(T_LENGTH, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_JOIN: return Token(T_JOIN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_OUTPUT: return Token(T_OUTPUT, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_LESSTHAN: return Token(T_LESSTHAN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_MORETHAN: return Token(T_MORETHAN, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_LESSEQUALS: return Token(T_LESSEQUALS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_MOREEQUALS: return Token(T_MOREEQUALS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_SAMEAS: return Token(T_SAMEAS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_NOTSAMEAS: return Token(T_NOTSAMEAS, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_IF: return Token(T_IF, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_ELSEIF: return Token(T_ELSEIF, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_ELSE: return Token(T_ELSE, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_FOR: return Token(T_FOR, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_FROM: return Token(T_FROM, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_TO: return Token(T_TO, pos_start=pos_start, pos_end=self.pos)
+		elif kword == T_BREAK: return Token(T_BREAK, pos_start=pos_start, pos_end=self.pos)
 		else: return Token(T_VAR, value=kword, pos_start=pos_start, pos_end=self.pos)
 
 	def makeString(self):
@@ -487,6 +490,12 @@ class forNode(BasicNode):
 
 	def __repr__(self):
 		return f'(for: var:{self.var_node} from:{self.from_node} to:{self.to_node}) code:{self.code_nodes}'
+
+
+class breakNode(BasicNode):
+	def __init__(self, break_node):
+		self.type = 'breakNode'
+		self.break_node = break_node
 		
 
 ################
@@ -526,6 +535,8 @@ class Parser:
 		elif self.tokens[0].type == T_FOR:
 			res = self.buildForLoop()
 			if res.error: return ParseResult().failure(res.error)
+		elif self.tokens[0].type == T_BREAK:
+			res = self.getBreakKeyword()
 		else:
 			if self.tokens[0].type == T_OUTPUT:
 				self.output = True
@@ -548,7 +559,6 @@ class Parser:
 			elif strlen_check:
 				res = self.stringOp()
 			else:
-				
 				res = self.expr()
 
 			if not res.error and self.current_tok.type != T_EOF:
@@ -878,19 +888,20 @@ class Parser:
 			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected a FROM keyword in loop declaration [E20]'))
 		res.register(self.advance())
 
-		if self.current_tok.type != T_INT:
-			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the FROM keyword in loop declaration [E21]'))
-		from_node = numberNode(self.current_tok)
-		res.register(self.advance())
+		# if self.current_tok.type != T_INT:
+		# 	return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the FROM keyword in loop declaration [E21]'))
+		# from_node = numberNode(self.current_tok)
+		# res.register(self.advance())
+		from_node = self.expr()
 
 		if self.current_tok.type != T_TO:
 			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected a TO keyword in loop declaration [E22]'))
 		res.register(self.advance())
 
-		if self.current_tok.type != T_INT:
-			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the TO keyword in loop declaration [E23]'))
-		to_node = numberNode(self.current_tok)
-		res.register(self.advance())
+		# if self.current_tok.type != T_INT:
+		# 	return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'Expected an integer after the TO keyword in loop declaration [E23]'))
+		to_node = self.expr()
+		# res.register(self.advance())
 		
 		res.register(self.advance())
 		code_nodes = []
@@ -903,6 +914,16 @@ class Parser:
 
 		for_node = forNode(var_node, from_node, to_node, code_nodes)
 		return res.success(for_node)
+
+	def getBreakKeyword(self):
+		res = ParseResult()
+		break_tok = self.current_tok
+		res.register(self.advance())
+		if self.current_tok.type != T_EOF:
+			return res.failure(InvalidSyntaxError(self.current_tok.pos_start, self.current_tok.pos_end, 'BREAK statement needs to be on its own line [E24]'))
+		
+		break_node = breakNode(break_tok)
+		return res.success(break_node)
 
 
 class ParseResult:
@@ -1228,25 +1249,35 @@ class Interpreter:
 		res = RunTimeResult()
 		result = None
 		var_val = node.var_node.node.value
-		from_val = node.from_node.token.value
-		to_val = node.to_node.token.value
-		VARS_SAVED[var_val] = res.register(self.visit(node.from_node))
+		from_val = res.register(self.visit(node.from_node.node))
+		to_val = res.register(self.visit(node.to_node.node))
+		VARS_SAVED[var_val] = res.register(self.visit(node.from_node.node))
+		break_loop = False
 
-		for i in range(from_val, to_val):
+		for i in range(from_val.value, to_val.value):
+			if break_loop:
+				break
 			for line in node.code_nodes:
 				result, output = self.visit(line)
 				if result:
 					if result.error: return result, None
 
+					if result.value == 'break':
+						break_loop = True
+						break
+
 					if output or self.debug:
 						print(result.value)
 				
-				VARS_SAVED[var_val].value += 1
+			VARS_SAVED[var_val].value += 1
 
 		if not result:
 			return None, None
 		else:
 			return res.success(result.value), None
+
+	def visit_breakNode(self, node):
+		return RunTimeResult().success('break'), None
 
 
 class RunTimeResult:
