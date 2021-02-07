@@ -9,19 +9,24 @@ DIGITS = '0123456789'
 VARCHARS = string.ascii_letters + '_'
 STRINGCHARS = string.printable + '£'
 
+# Data Type tokens
 T_INT = 'INT'
 T_FLOAT = 'FLOAT'
 T_STRING = 'STRING'
 
+# Operation tokens
 T_ADD = 'ADD'
 T_MINUS = 'MINUS'
 T_MULTIPLY = 'MULTIPLY'
 T_DIVIDE = 'DIVIDE'
 
+# Syntax tokens
 T_LPAREN = 'LPAREN'
 T_RPAREN = 'RPAREN'
 T_LSBRACK = 'LSBRACK'
 T_RSBRACK = 'RSBRACK'
+
+# Conditional tokens
 T_LESSTHAN = 'LESSTHAN'
 T_MORETHAN = 'MORETHAN'
 T_LESSEQUALS = 'LESSEQUALS'
@@ -29,6 +34,7 @@ T_MOREEQUALS = 'MOREEQUALS'
 T_SAMEAS = 'SAMEAS'
 T_NOTSAMEAS = 'NOTSAMEAS'
 
+# Keyword tokens
 T_VAR = 'VAR'
 T_EQUALS = 'EQUALS'
 T_OUTPUT = 'OUTPUT'
@@ -37,7 +43,6 @@ T_JOIN = 'JOIN'
 T_IF = 'IF'
 T_ELSEIF = 'ELSEIF'
 T_ELSE = 'ELSE'
-
 T_FOR = 'FOR'
 T_FROM = 'FROM'
 T_TO = 'TO'
@@ -193,7 +198,7 @@ class Lexer:
 				self.advance()
 			elif self.current_char == '[':
 				tokens.append(Token(T_LSBRACK, pos_start=self.pos))
-				res, error, pos = self.makeConditional()
+				res, error, pos = self.makeCodeBlock()
 				self.pos.ln = pos[1] - 1
 				self.pos.col = pos[2]
 				if error: return [], error
@@ -280,7 +285,7 @@ class Lexer:
 
 		return Token(T_STRING, value=string, pos_start=pos_start, pos_end=self.pos), None
 
-	def makeConditional(self):
+	def makeCodeBlock(self):
 		ln = self.pos.ln
 		self.advance()
 		text = ''
@@ -303,7 +308,7 @@ class Lexer:
 			self.advance()
 
 		# print(text)
-		int_lexer = Lexer('<conditional>', text, pos=Position(-1, ln, -1, self.fn, text))
+		int_lexer = Lexer('<code_block>', text, pos=Position(-1, ln, -1, self.fn, text))
 		res, error = int_lexer.makeTokens()
 		if error: return [], error, (int_lexer.pos.idx, int_lexer.pos.ln, int_lexer.pos.col)
 		# print(res)
